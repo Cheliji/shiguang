@@ -44,7 +44,6 @@ def test_archived_card_readonly(qtbot):
     )
     assert card.checkbox.is_checked()  # 只读绿色勾选
     assert card.menu_button.isHidden()
-    assert "★ 4" in card.right_label.text()
 
 
 def test_overdue_style(qtbot):

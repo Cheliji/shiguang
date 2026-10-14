@@ -205,10 +205,25 @@ class TaskCard(QFrame):
         if archived:
             self.checkbox.set_read_only_done()
             self.menu_button.hide()
-            score = item.score or 0
-            duration = item.duration or 0
-            self.right_label.setText(f"★ {score} · {duration}min")
-            self.right_label.show()
+            # 归档态：只读星级（T08 RatingWidget）+ 用时
+            from shiguang.ui.widgets.rating_widget import RatingWidget
+
+            stars = RatingWidget(size=16, read_only=True)
+            stars.set_score(item.score or 0)
+            right_row = QHBoxLayout()
+            right_row.setSpacing(Space.XS)
+            right_row.addWidget(stars)
+            duration_label = QLabel(f"{item.duration or 0}min")
+            duration_label.setStyleSheet(
+                f"color: {Color.TEXT_TERTIARY}; font-size: {FontSize.TINY}px;"
+            )
+            right_row.addWidget(duration_label)
+            self.right_label.setText("")
+            self.right_label.hide()
+            right_holder = QWidget(self)
+            right_holder.setLayout(right_row)
+            self.layout().addWidget(right_holder, 0, Qt.AlignmentFlag.AlignTop)
+            self._right_holder = right_holder
         else:
             self.right_label.hide()
             self.menu_button.show()
