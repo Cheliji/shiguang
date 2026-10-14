@@ -123,6 +123,7 @@ class TaskCard(QFrame):
     archive_requested = Signal(int)
     edit_requested = Signal(int)
     delete_requested = Signal(int)
+    details_requested = Signal(int)
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
@@ -311,6 +312,17 @@ class TaskCard(QFrame):
             self.edit_requested.emit(self._item.id)
         elif action is delete_action:
             self.delete_requested.emit(self._item.id)
+
+    def mousePressEvent(self, event) -> None:
+        """归档态点击卡片查看详情。"""
+        if (
+            self._item is not None
+            and self._item.status == STATUS_ARCHIVED
+            and event.button() == Qt.MouseButton.LeftButton
+        ):
+            self.details_requested.emit(self._item.id)
+            return
+        super().mousePressEvent(event)
 
     def sizeHint(self) -> QSize:
         return QSize(400, 76)
