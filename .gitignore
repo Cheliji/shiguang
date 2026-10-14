@@ -21,6 +21,17 @@ logs/
 .DS_Store
 Thumbs.db
 
+# Python
+.venv/
+__pycache__/
+*.pyc
+*.egg-info/
+.pytest_cache/
+.ruff_cache/
+
+# 本地开发数据
+data/
+
 # 临时文件
 tmp/
 temp/
