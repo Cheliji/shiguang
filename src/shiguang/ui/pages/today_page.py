@@ -263,7 +263,7 @@ class TodayPage(QWidget):
         self._items[item.id] = item
         card = TaskCard(self)
         card.set_data(item)
-        # 归档弹窗接线属 T13
+        card.archive_requested.connect(self._on_archive)
         card.edit_requested.connect(self._on_edit)
         card.delete_requested.connect(self._on_delete)
         self.list_layout.addWidget(card)
@@ -321,6 +321,22 @@ class TodayPage(QWidget):
                 self._service.update_todo(task_id, **dialog.get_data())
                 InfoBar.success(
                     "成功", "代办已保存", parent=self.window(), position=InfoBarPosition.TOP
+                )
+            except ValueError as e:
+                InfoBar.error("失败", str(e), parent=self.window(), position=InfoBarPosition.TOP)
+
+    def _on_archive(self, task_id: int) -> None:
+        from shiguang.ui.dialogs.archive_dialog import ArchiveDialog
+
+        item = self._items.get(task_id)
+        if item is None:
+            return
+        dialog = ArchiveDialog(self.window(), item=item)
+        if dialog.exec():
+            try:
+                self._service.archive(task_id, dialog.get_data())
+                InfoBar.success(
+                    "成功", "已归档，干得漂亮！", parent=self.window(), position=InfoBarPosition.TOP
                 )
             except ValueError as e:
                 InfoBar.error("失败", str(e), parent=self.window(), position=InfoBarPosition.TOP)

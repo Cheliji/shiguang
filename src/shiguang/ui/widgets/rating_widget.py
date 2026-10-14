@@ -82,9 +82,12 @@ class RatingWidget(QWidget):
         return self._score
 
     def set_score(self, score: int) -> None:
-        self._score = max(0, min(5, score))
-        self._stars_area.update()
-        self._update_label()
+        score = max(0, min(5, score))
+        if score != self._score:
+            self._score = score
+            self._stars_area.update()
+            self._update_label()
+            self.score_changed.emit(score)
 
     def set_read_only(self, read_only: bool) -> None:
         self._read_only = read_only
@@ -120,7 +123,6 @@ class RatingWidget(QWidget):
         star = self._star_at(x)
         if star:
             self.set_score(star)
-            self.score_changed.emit(star)
             self._bounce()
 
     def _bounce(self) -> None:
