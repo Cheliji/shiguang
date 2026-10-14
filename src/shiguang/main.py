@@ -30,6 +30,12 @@ def main() -> int:
     if _QSS_PATH.exists():
         app.setStyleSheet(_QSS_PATH.read_text(encoding="utf-8"))
 
+    # 开发期组件预览：SHIGUANG_PREVIEW=1 时展示预览窗口代替主窗口
+    from shiguang.ui.pages.dev_preview_page import maybe_show_preview
+
+    if maybe_show_preview():
+        return app.exec()
+
     window = MainWindow()
     window.show()
 
