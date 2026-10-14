@@ -121,3 +121,18 @@ def test_edit_repeat_instance_locked(qtbot, window):
     qtbot.addWidget(dialog)
     assert dialog.repeat_combo.isEnabled() is False
     assert dialog.date_stack.isEnabled() is False
+
+
+def test_delay_policy_default_and_auto(qtbot, window):
+    dialog = TodoDialog(window)
+    qtbot.addWidget(dialog)
+    _fill(dialog)
+    assert dialog.get_data()["delay_policy"] == "default"
+    dialog.delay_buttons["auto"].setChecked(True)
+    assert dialog.get_data()["delay_policy"] == "auto"
+
+
+def test_goal_placeholder_disabled(qtbot, window):
+    dialog = TodoDialog(window)
+    qtbot.addWidget(dialog)
+    assert dialog.goal_edit.isEnabled() is False

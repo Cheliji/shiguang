@@ -142,6 +142,10 @@ class TodoDialog(MessageBoxBase):
         # 重复周期 + 日期联动（T11）
         self.viewLayout.addLayout(self._build_repeat_area())
 
+        # 延期策略 + 关联目标（T12）
+        self.viewLayout.addLayout(self._build_delay_area())
+        self.viewLayout.addLayout(self._build_goal_area())
+
         # 按钮
         self.yesButton.setText("保存修改" if item else "创建代办")
         self.cancelButton.setText("取消")
@@ -151,6 +155,8 @@ class TodoDialog(MessageBoxBase):
             self.desc_edit.setPlainText(item.description or "")
             self.standard_edit.setPlainText(item.standard or "")
             self._prefill_repeat(item)
+            if item.delay_policy in self.delay_buttons:
+                self.delay_buttons[item.delay_policy].setChecked(True)
         self._update_guide()
 
     # ---------- 重复周期 + 日期联动 ----------
@@ -207,6 +213,55 @@ class TodoDialog(MessageBoxBase):
         layout.addStretch(1)
         return page
 
+    def _build_delay_area(self) -> QVBoxLayout:
+        area = QVBoxLayout()
+        area.setContentsMargins(0, 0, 0, 0)
+        area.setSpacing(Space.XS)
+
+        area.addLayout(self._field_label("延期策略"))
+
+        row = QHBoxLayout()
+        row.setSpacing(Space.LG)
+        self.delay_group = QButtonGroup(self.widget)
+        self.delay_group.setExclusive(True)
+        self.delay_buttons: dict[str, QCheckBox] = {}
+        for i, (value, label) in enumerate(
+            (("default", "默认（不延期）"), ("never", "不延期"), ("auto", "自动延期"))
+        ):
+            radio = QCheckBox(label, self.widget)
+            radio.setStyleSheet(f"font-size: {FontSize.BODY}px; color: {Color.TEXT_PRIMARY};")
+            radio.setProperty("delay_value", value)
+            self.delay_group.addButton(radio, i)
+            row.addWidget(radio)
+            self.delay_buttons[value] = radio
+        self.delay_buttons["default"].setChecked(True)
+        row.addStretch(1)
+        area.addLayout(row)
+
+        hint = QLabel("自动延期：过期未完成将顺延至次日")
+        hint.setStyleSheet(f"color: {Color.TEXT_TERTIARY}; font-size: {FontSize.TINY}px;")
+        area.addWidget(hint)
+        return area
+
+    def _build_goal_area(self) -> QVBoxLayout:
+        area = QVBoxLayout()
+        area.setContentsMargins(0, 0, 0, 0)
+        area.setSpacing(Space.XS)
+
+        area.addLayout(self._field_label("关联目标（可选）"))
+
+        self.goal_edit = LineEdit(self.widget)
+        self.goal_edit.setPlaceholderText("目标模块上线后可关联")
+        self.goal_edit.setFixedHeight(40)
+        self.goal_edit.setEnabled(False)
+        self.goal_edit.setStyleSheet(_FIELD_QSS)
+        area.addWidget(self.goal_edit)
+
+        hint = QLabel("MVP 暂未启用（目标计划属 v1.0）")
+        hint.setStyleSheet(f"color: {Color.TEXT_TERTIARY}; font-size: {FontSize.TINY}px;")
+        area.addWidget(hint)
+        return area
+
     def _page_placeholder(self, text: str) -> QWidget:
         page = QWidget(self.widget)
         layout = QHBoxLayout(page)
@@ -216,6 +271,12 @@ class TodoDialog(MessageBoxBase):
         layout.addWidget(label)
         layout.addStretch(1)
         return page
+
+    def _selected_delay_policy(self) -> str:
+        for value, radio in self.delay_buttons.items():
+            if radio.isChecked():
+                return value
+        return "default"
 
     def _page_daily(self) -> QWidget:
         page = QWidget(self.widget)
@@ -410,6 +471,7 @@ class TodoDialog(MessageBoxBase):
             "description": self.desc_edit.toPlainText().strip(),
             "standard": self.standard_edit.toPlainText().strip(),
             "repeat": repeat,
+            "delay_policy": self._selected_delay_policy(),
         }
 
         if repeat == REPEAT_NONE:
