@@ -19,7 +19,7 @@
    - `create_todo(...)` / `update_todo(...)` / `delete_todo(...)`
    - `archive(task_id, ArchiveInput)`
    - `changed` 信号（Mock 也要发射）
-3. `services/mock/mock_task_service.py`：内存实现，预置假数据覆盖：普通今日代办、带完成标准的代办、逾期代办（含 delay_count>0）、每日重复代办、已归档代办（带评分/用时/总结）
+3. `services/mock/mock_task_service.py`：内存实现，预置假数据覆盖：普通今日代办、带完成标准的代办、逾期代办（含 delay_count>0）、每日重复代办（含 end_date 示例）、已归档代办（带评分/用时/总结）
 4. `get_task_service()` 工厂（读 `USE_MOCK` 开关，当前恒为 Mock）
 5. 契约测试：增删改、归档（总结可空）、`today_summary` 计数——**该测试阶段三直接复用到真实实现**
 
