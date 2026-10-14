@@ -1,0 +1,541 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>拾光 · 个人事务管理</title>
+    <link rel="stylesheet" href="css/tokens.css">
+    <link rel="stylesheet" href="css/components.css">
+    <link rel="stylesheet" href="css/app.css">
+</head>
+<body>
+    <div class="app">
+        <!-- 左侧导航栏 -->
+        <nav class="nav-sidebar">
+            <div class="nav-top">
+                <div class="nav-logo" title="拾光">
+                    <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M12 2L2 7l10 5 10-5-10-5z"/>
+                        <path d="M2 17l10 5 10-5"/>
+                        <path d="M2 12l10 5 10-5"/>
+                    </svg>
+                </div>
+                <div class="nav-items">
+                    <button class="nav-item active" data-page="today" title="今日">
+                        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/>
+                            <polyline points="9 22 9 12 15 12 15 22"/>
+                        </svg>
+                    </button>
+                    <button class="nav-item" data-page="todo" title="代办">
+                        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <path d="M9 11l3 3L22 4"/>
+                            <path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/>
+                        </svg>
+                    </button>
+                    <button class="nav-item" data-page="goal" title="目标">
+                        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <circle cx="12" cy="12" r="10"/>
+                            <circle cx="12" cy="12" r="6"/>
+                            <circle cx="12" cy="12" r="2"/>
+                        </svg>
+                    </button>
+                    <button class="nav-item" data-page="habit" title="习惯">
+                        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/>
+                        </svg>
+                    </button>
+                    <button class="nav-item" data-page="diary" title="日记">
+                        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/>
+                            <path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/>
+                        </svg>
+                    </button>
+                    <button class="nav-item" data-page="stats" title="统计">
+                        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <line x1="18" y1="20" x2="18" y2="10"/>
+                            <line x1="12" y1="20" x2="12" y2="4"/>
+                            <line x1="6" y1="20" x2="6" y2="14"/>
+                        </svg>
+                    </button>
+                </div>
+            </div>
+            <div class="nav-bottom">
+                <button class="nav-item" data-page="settings" title="设置">
+                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <circle cx="12" cy="12" r="3"/>
+                        <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/>
+                    </svg>
+                </button>
+            </div>
+        </nav>
+
+        <!-- 页面内容区 -->
+        <main class="page-container">
+            <!-- 今日首页 -->
+            <section class="page today-page active" data-page="today">
+                <div class="page-header">
+                    <div class="page-header-left">
+                        <span class="mood-emoji" id="todayMood">🌱</span>
+                        <span class="mood-text" id="todayMoodText">今天也是充满希望的一天</span>
+                    </div>
+                    <div class="page-header-right">
+                        <button class="btn btn-primary" id="btnNewTodoToday">
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+                            新建代办
+                        </button>
+                        <button class="btn btn-secondary" id="btnWriteDiaryToday">
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+                            写日记
+                        </button>
+                    </div>
+                </div>
+
+                <!-- 日期选择栏 -->
+                <div class="date-bar-card">
+                    <button class="date-nav-btn" id="datePrevWeek">
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>
+                    </button>
+                    <div class="date-bar" id="dateBar"></div>
+                    <button class="date-nav-btn" id="dateNextWeek">
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
+                    </button>
+                </div>
+
+                <!-- 概览卡片 -->
+                <div class="stats-cards-row">
+                    <div class="stats-card">
+                        <div class="stats-card-header">
+                            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
+                            <span>今日代办</span>
+                        </div>
+                        <div class="stats-card-body">
+                            <span class="stats-card-number" id="todayTodoCount">0</span>
+                            <span class="stats-card-unit">个待完成</span>
+                        </div>
+                        <div class="stats-card-progress">
+                            <div class="progress-bar-bg"><div class="progress-bar-fill" id="todayProgressBar" style="width: 0%"></div></div>
+                        </div>
+                    </div>
+                    <div class="stats-card">
+                        <div class="stats-card-header">
+                            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/></svg>
+                            <span>日记状态</span>
+                        </div>
+                        <div class="stats-card-body" id="diaryStatusBody">
+                            <span class="stats-card-number" style="font-size: 18px; font-weight: 500;">未记录</span>
+                            <span class="stats-card-unit">点击记录今日复盘</span>
+                        </div>
+                        <div class="stats-card-footer">
+                            <button class="btn btn-ghost btn-sm" id="btnGoDiary">去写日记</button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 今日代办列表 -->
+                <div class="section-header">
+                    <h2>今日代办 <span class="badge badge-count" id="todayListCount">0</span></h2>
+                </div>
+                <div class="task-list" id="todayTaskList"></div>
+                <button class="btn-add-task" id="btnAddTaskToday">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+                    添加代办
+                </button>
+            </section>
+
+            <!-- 代办列表页 -->
+            <section class="page todo-page" data-page="todo">
+                <div class="page-title-bar">
+                    <h1>代办</h1>
+                    <button class="btn btn-primary" id="btnNewTodo">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+                        新建代办
+                    </button>
+                </div>
+                <div class="filter-bar-card">
+                    <div class="filter-tabs" id="todoFilterTabs">
+                        <button class="filter-tab active" data-filter="today">今日</button>
+                        <button class="filter-tab" data-filter="pending">待办</button>
+                        <button class="filter-tab" data-filter="overdue">逾期</button>
+                        <button class="filter-tab" data-filter="archived">已归档</button>
+                    </div>
+                    <div class="filter-date">
+                        <button class="filter-date-trigger" id="dateFilterTrigger">
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+                            <span>全部日期</span>
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
+                        </button>
+                    </div>
+                </div>
+                <div class="task-list-card">
+                    <div class="task-list" id="todoTaskList"></div>
+                    <div class="empty-state" id="todoEmptyState" style="display: none;">
+                        <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>
+                        <p class="empty-title">暂无代办</p>
+                        <p class="empty-desc">创建代办来管理你的任务</p>
+                        <button class="btn btn-primary" id="btnEmptyNewTodo">新建代办</button>
+                    </div>
+                </div>
+            </section>
+
+            <!-- 习惯养成页 -->
+            <section class="page habit-page" data-page="habit">
+                <div class="page-title-bar">
+                    <h1>习惯养成</h1>
+                    <button class="btn btn-primary" id="btnNewHabit">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+                        新建习惯
+                    </button>
+                </div>
+                <div class="habit-grid" id="habitGrid"></div>
+                <div class="empty-state" id="habitEmptyState" style="display: none;">
+                    <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>
+                    <p class="empty-title">还没有习惯</p>
+                    <p class="empty-desc">培养一个好习惯，从每天一次打卡开始</p>
+                    <button class="btn btn-primary" id="btnEmptyNewHabit">新建习惯</button>
+                </div>
+            </section>
+
+            <!-- 日记页 -->
+            <section class="page diary-page" data-page="diary">
+                <div class="diary-layout">
+                    <aside class="diary-sidebar">
+                        <div class="diary-calendar-header">
+                            <button class="cal-nav" id="calPrevMonth"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg></button>
+                            <span id="calMonthYear">2026年1月</span>
+                            <button class="cal-nav" id="calNextMonth"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg></button>
+                        </div>
+                        <div class="diary-calendar" id="diaryCalendar"></div>
+                        <div class="diary-recent-divider"></div>
+                        <div class="diary-recent-header">最近日记</div>
+                        <div class="diary-recent-list" id="diaryRecentList"></div>
+                    </aside>
+                    <div class="diary-main" id="diaryMain">
+                        <!-- 动态渲染 -->
+                    </div>
+                </div>
+            </section>
+
+            <!-- 目标计划页 -->
+            <section class="page goal-page" data-page="goal">
+                <div class="page-title-bar">
+                    <h1>目标计划</h1>
+                    <button class="btn btn-primary" id="btnNewGoal">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+                        新建目标
+                    </button>
+                </div>
+                <div class="goal-tabs-card">
+                    <div class="goal-tabs" id="goalTabs">
+                        <button class="goal-tab active" data-period="week">周目标</button>
+                        <button class="goal-tab" data-period="month">月目标</button>
+                        <button class="goal-tab" data-period="year">年目标</button>
+                    </div>
+                </div>
+                <div class="goal-grid" id="goalGrid"></div>
+                <div class="empty-state" id="goalEmptyState" style="display: none;">
+                    <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2"/></svg>
+                    <p class="empty-title">暂无目标</p>
+                    <p class="empty-desc">设定一个目标，让每一天都有方向</p>
+                    <button class="btn btn-primary" id="btnEmptyNewGoal">新建目标</button>
+                </div>
+            </section>
+
+            <!-- 统计页 -->
+            <section class="page stats-page" data-page="stats">
+                <div class="page-title-bar">
+                    <h1>统计</h1>
+                </div>
+                <div class="stats-time-filter">
+                    <button class="pill-tab active" data-range="7">最近7天</button>
+                    <button class="pill-tab" data-range="30">最近30天</button>
+                    <button class="pill-tab" data-range="month">本月</button>
+                </div>
+                <div class="stats-overview-row">
+                    <div class="stats-card stats-card-large">
+                        <div class="stats-card-header">
+                            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
+                            <span>代办完成率</span>
+                        </div>
+                        <div class="stats-card-body">
+                            <span class="stats-card-number" id="statsRate">78%</span>
+                        </div>
+                        <div class="stats-card-progress">
+                            <div class="progress-bar-bg"><div class="progress-bar-fill" style="width: 78%"></div></div>
+                        </div>
+                    </div>
+                    <div class="stats-card stats-card-large">
+                        <div class="stats-card-header">
+                            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
+                            <span>平均质量评分</span>
+                        </div>
+                        <div class="stats-card-body">
+                            <span class="stats-card-number" id="statsScore">4.2</span>
+                            <svg width="24" height="24" viewBox="0 0 24 24" fill="#FBBF24" stroke="#FBBF24" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-left: 4px;"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
+                        </div>
+                        <div class="stats-card-footer">
+                            <span class="stats-trend stats-trend-up">比上周 +0.3</span>
+                        </div>
+                    </div>
+                </div>
+                <div class="stats-section-card">
+                    <div class="stats-section-header">
+                        <h3>代办完成热力图</h3>
+                        <div class="heatmap-legend">
+                            <span>少</span>
+                            <div class="legend-cell" style="background: var(--bg-secondary)"></div>
+                            <div class="legend-cell" style="background: #B3E5E9"></div>
+                            <div class="legend-cell" style="background: #66CDD6"></div>
+                            <div class="legend-cell" style="background: #009FAA"></div>
+                            <div class="legend-cell" style="background: #007A82"></div>
+                            <span>满</span>
+                        </div>
+                    </div>
+                    <div class="heatmap" id="heatmap"></div>
+                </div>
+                <div class="stats-section-card">
+                    <div class="stats-section-header">
+                        <h3>代办完成率趋势</h3>
+                    </div>
+                    <div class="bar-chart" id="barChart"></div>
+                </div>
+            </section>
+        </main>
+    </div>
+
+    <!-- 弹窗遮罩层 -->
+    <div class="modal-overlay" id="modalOverlay"></div>
+
+    <!-- 创建/编辑代办弹窗 -->
+    <div class="modal modal-todo" id="todoDialog">
+        <div class="modal-header">
+            <h3 id="todoDialogTitle">新建代办</h3>
+            <button class="modal-close" id="todoDialogClose">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+            </button>
+        </div>
+        <div class="modal-body">
+            <form id="todoForm">
+                <div class="form-group">
+                    <label class="form-label">代办名称 <span class="required">*</span></label>
+                    <input type="text" class="form-input" id="todoName" placeholder="输入代办名称…" required>
+                </div>
+                <div class="form-row">
+                    <div class="form-group form-group-half">
+                        <label class="form-label">重复周期</label>
+                        <select class="form-select" id="todoRepeat">
+                            <option value="none">不重复</option>
+                            <option value="daily">每日</option>
+                            <option value="weekly">每周</option>
+                            <option value="monthly">每月</option>
+                        </select>
+                    </div>
+                    <div class="form-group form-group-half">
+                        <label class="form-label" id="todoDateLabel">计划日期</label>
+                        <input type="date" class="form-input" id="todoDate">
+                    </div>
+                </div>
+                <div class="form-group" id="weeklyOptions" style="display: none;">
+                    <label class="form-label">选择星期</label>
+                    <div class="weekday-selector">
+                        <label><input type="checkbox" value="1"><span>一</span></label>
+                        <label><input type="checkbox" value="2"><span>二</span></label>
+                        <label><input type="checkbox" value="3"><span>三</span></label>
+                        <label><input type="checkbox" value="4"><span>四</span></label>
+                        <label><input type="checkbox" value="5"><span>五</span></label>
+                        <label><input type="checkbox" value="6"><span>六</span></label>
+                        <label><input type="checkbox" value="0"><span>日</span></label>
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">延期策略</label>
+                    <div class="radio-group">
+                        <label class="radio-label"><input type="radio" name="delayPolicy" value="default" checked><span>默认（不延期）</span></label>
+                        <label class="radio-label"><input type="radio" name="delayPolicy" value="never"><span>不延期</span></label>
+                        <label class="radio-label"><input type="radio" name="delayPolicy" value="auto"><span>自动延期</span></label>
+                    </div>
+                    <p class="form-hint">自动延期：过期未完成将顺延至次日</p>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">描述（可选）</label>
+                    <textarea class="form-textarea" id="todoDesc" rows="3" placeholder="补充细节、背景信息…"></textarea>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">关联目标（可选）</label>
+                    <div class="related-goal-selector" id="relatedGoalSelector">
+                        <div class="related-goal-trigger" id="relatedGoalTrigger">
+                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+                            <span id="relatedGoalTriggerText">选择要关联的目标…</span>
+                        </div>
+                        <div class="related-goal-dropdown" id="relatedGoalDropdown" style="display: none;">
+                            <div class="related-goal-list" id="relatedGoalList"></div>
+                        </div>
+                    </div>
+                    <div class="related-goal-tags" id="relatedGoalTags"></div>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">完成标准 <span class="required">*</span></label>
+                    <span class="form-label-hint">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
+                        明确标准，事后才能高质量复盘
+                    </span>
+                    <textarea class="form-textarea form-textarea-highlight" id="todoStandard" rows="4" placeholder="做到什么程度算完成？具体、可衡量、可验证…" required></textarea>
+                    <p class="form-hint" id="standardHint">建议：用「输出物」+「标准」描述，如「输出读书笔记 3 条，能复述作者核心观点」</p>
+                </div>
+            </form>
+        </div>
+        <div class="modal-footer">
+            <button class="btn btn-secondary" id="todoDialogCancel">取消</button>
+            <button class="btn btn-primary" id="todoDialogConfirm">创建代办</button>
+        </div>
+    </div>
+
+    <!-- 习惯详情弹窗 -->
+    <div class="modal modal-habit" id="habitDetailDialog">
+        <div class="modal-header">
+            <h3 id="habitDetailTitle">习惯详情</h3>
+            <button class="modal-close" id="habitDetailClose">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+            </button>
+        </div>
+        <div class="modal-body">
+            <div class="habit-detail-header">
+                <div class="habit-detail-streak" id="habitDetailStreak">
+                    <span class="streak-number" id="habitStreakNumber">0</span>
+                    <span class="streak-label">连续打卡天数</span>
+                </div>
+                <div class="habit-detail-meta">
+                    <div class="habit-detail-name" id="habitDetailName">--</div>
+                    <div class="habit-detail-desc" id="habitDetailDesc">--</div>
+                    <div class="habit-detail-stats">
+                        <span class="habit-stat">本月打卡 <strong id="habitMonthCount">0</strong> 天</span>
+                        <span class="habit-stat">最长连续 <strong id="habitMaxStreak">0</strong> 天</span>
+                    </div>
+                </div>
+            </div>
+            <div class="habit-detail-divider"></div>
+            <div class="habit-detail-section-title">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+                月度打卡日历
+            </div>
+            <div class="habit-detail-calendar" id="habitDetailCalendar"></div>
+        </div>
+        <div class="modal-footer">
+            <button class="btn btn-secondary" id="habitDetailCancel">关闭</button>
+            <button class="btn btn-danger" id="habitDetailEnd" style="background: var(--danger);">结束习惯</button>
+        </div>
+    </div>
+
+    <!-- 归档弹窗 -->
+    <div class="modal modal-archive" id="archiveDialog">
+        <div class="modal-header">
+            <h3>归档代办</h3>
+            <button class="modal-close" id="archiveDialogClose">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+            </button>
+        </div>
+        <div class="modal-body">
+            <div class="archive-info-card">
+                <div class="archive-info-title">📋 原始任务信息（只读）</div>
+                <div class="archive-info-row"><strong>代办名称：</strong><span id="archiveTaskName">--</span></div>
+                <div class="archive-info-row"><strong>描述：</strong><span id="archiveTaskDesc">无描述</span></div>
+                <div class="archive-standard-box">
+                    <div class="archive-standard-title">🎯 完成标准</div>
+                    <div class="archive-standard-text" id="archiveTaskStandard">--</div>
+                    <div class="archive-standard-hint">对照此标准，确认任务完成质量后再归档</div>
+                </div>
+            </div>
+            <div class="archive-divider"></div>
+            <div class="archive-form-title">归档信息 <span class="required">*</span></div>
+            <div class="form-group">
+                <label class="form-label">代办用时（分钟） <span class="required">*</span></label>
+                <div class="form-input-icon">
+                    <input type="number" class="form-input" id="archiveDuration" placeholder="输入实际用时…" min="0">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+                </div>
+                <div class="quick-tags" id="quickDurationTags">
+                    <button type="button" data-val="15">15分钟</button>
+                    <button type="button" data-val="30">30分钟</button>
+                    <button type="button" data-val="45">45分钟</button>
+                    <button type="button" data-val="60">60分钟</button>
+                    <button type="button" data-val="90">90分钟</button>
+                </div>
+            </div>
+            <div class="form-group">
+                <label class="form-label">质量评分 <span class="required">*</span></label>
+                <div class="rating-widget" id="ratingWidget">
+                    <button type="button" data-star="1"><svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg></button>
+                    <button type="button" data-star="2"><svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg></button>
+                    <button type="button" data-star="3"><svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg></button>
+                    <button type="button" data-star="4"><svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg></button>
+                    <button type="button" data-star="5"><svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg></button>
+                </div>
+                <div class="rating-label" id="ratingLabel">请点击星星评分</div>
+            </div>
+            <div class="form-group">
+                <label class="form-label">总结（可选）</label>
+                <textarea class="form-textarea" id="archiveSummary" rows="4" placeholder="这次完成得怎么样？有什么可以复用的经验？"></textarea>
+                <div class="char-count" id="charCount">已输入 0/500 字</div>
+            </div>
+        </div>
+        <div class="modal-footer">
+            <button class="btn btn-secondary" id="archiveDialogCancel">取消</button>
+            <button class="btn btn-success" id="archiveDialogConfirm">✓ 确认归档</button>
+        </div>
+    </div>
+
+    <!-- 目标详情弹窗 -->
+    <div class="modal modal-goal-detail" id="goalDetailDialog">
+        <div class="modal-header">
+            <h3 id="goalDetailTitle">目标详情</h3>
+            <button class="modal-close" id="goalDetailClose">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+            </button>
+        </div>
+        <div class="modal-body">
+            <div class="goal-detail-header">
+                <div class="goal-detail-progress-ring" id="goalDetailProgressRing">
+                    <svg viewBox="0 0 120 120">
+                        <circle class="progress-ring-bg" cx="60" cy="60" r="52"/>
+                        <circle class="progress-ring-fill" cx="60" cy="60" r="52" id="goalDetailProgressCircle"/>
+                    </svg>
+                    <div class="progress-ring-text" id="goalDetailProgressText">0%</div>
+                </div>
+                <div class="goal-detail-meta">
+                    <div class="goal-detail-name" id="goalDetailName">--</div>
+                    <div class="goal-detail-desc" id="goalDetailDesc">--</div>
+                    <div class="goal-detail-tags" id="goalDetailTags"></div>
+                </div>
+            </div>
+            <div class="goal-detail-divider"></div>
+            <div class="goal-detail-section">
+                <div class="goal-detail-section-title">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>
+                    关联代办
+                    <span class="goal-detail-count" id="goalDetailTaskCount">0</span>
+                </div>
+                <div class="goal-detail-task-list" id="goalDetailTaskList"></div>
+            </div>
+            <div class="goal-detail-divider"></div>
+            <div class="goal-detail-section">
+                <div class="goal-detail-section-title">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2"/></svg>
+                    子目标
+                    <span class="goal-detail-count" id="goalDetailSubCount">0</span>
+                </div>
+                <div class="goal-detail-sub-list" id="goalDetailSubList"></div>
+            </div>
+        </div>
+        <div class="modal-footer">
+            <button class="btn btn-secondary" id="goalDetailCancel">关闭</button>
+            <button class="btn btn-primary" id="goalDetailEdit">编辑目标</button>
+        </div>
+    </div>
+
+    <!-- Toast/InfoBar -->
+    <div class="infobar-container" id="infobarContainer"></div>
+
+    <script src="js/mock-data.js"></script>
+    <script src="js/app.js"></script>
+</body>
+</html>
