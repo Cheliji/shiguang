@@ -22,6 +22,7 @@ from PySide6.QtWidgets import (
 from qfluentwidgets import InfoBar, InfoBarPosition
 
 from shiguang.services import get_task_service
+from shiguang.services.dto import TodoItem
 from shiguang.ui.theme import Color, FontSize, Space
 from shiguang.ui.widgets.buttons import ghost_button, primary_button, secondary_button
 from shiguang.ui.widgets.date_bar import DateBar
@@ -62,6 +63,7 @@ class TodayPage(QWidget):
         super().__init__(parent)
         self._service = get_task_service()
         self._selected_date = date.today()
+        self._items: dict[int, TodoItem] = {}
 
         root = QVBoxLayout(self)
         root.setContentsMargins(0, 0, 0, 0)
@@ -234,6 +236,7 @@ class TodayPage(QWidget):
         items = self._service.list_today(day)
         self.count_badge.setText(str(len(items) + len(overdue)))
 
+        self._items.clear()
         self._clear_list()
         if not overdue and not items:
             self._add_empty_state()
@@ -257,10 +260,12 @@ class TodayPage(QWidget):
                 child.widget().deleteLater()
 
     def _add_card(self, item) -> None:
+        self._items[item.id] = item
         card = TaskCard(self)
         card.set_data(item)
-        # 归档弹窗接线属 T13；编辑弹窗属 T10
-        card.edit_requested.connect(self._on_edit_placeholder)
+        # 归档弹窗接线属 T13
+        card.edit_requested.connect(self._on_edit)
+        card.delete_requested.connect(self._on_delete)
         self.list_layout.addWidget(card)
 
     def _add_empty_state(self) -> None:
@@ -288,15 +293,52 @@ class TodayPage(QWidget):
         self.refresh()
 
     def _on_new_clicked(self) -> None:
-        # T10：打开创建对话框
-        InfoBar.info(
-            "提示", "创建对话框将在 T10 接入", parent=self.window(), position=InfoBarPosition.TOP
-        )
+        from shiguang.ui.dialogs.todo_dialog import TodoDialog
 
-    def _on_edit_placeholder(self, task_id: int) -> None:
-        InfoBar.info(
-            "提示", "编辑对话框将在 T10 接入", parent=self.window(), position=InfoBarPosition.TOP
-        )
+        dialog = TodoDialog(self.window())
+        if dialog.exec():
+            data = dialog.get_data()
+            try:
+                self._service.create_todo(day=self._selected_date, **data)
+                InfoBar.success(
+                    "成功", "代办已创建", parent=self.window(), position=InfoBarPosition.TOP
+                )
+            except ValueError as e:
+                InfoBar.error("失败", str(e), parent=self.window(), position=InfoBarPosition.TOP)
+
+    def _on_edit(self, task_id: int) -> None:
+        from shiguang.ui.dialogs.todo_dialog import TodoDialog
+
+        item = self._items.get(task_id)
+        if item is None:
+            return
+        dialog = TodoDialog(self.window(), item=item)
+        if dialog.exec():
+            try:
+                self._service.update_todo(task_id, **dialog.get_data())
+                InfoBar.success(
+                    "成功", "代办已保存", parent=self.window(), position=InfoBarPosition.TOP
+                )
+            except ValueError as e:
+                InfoBar.error("失败", str(e), parent=self.window(), position=InfoBarPosition.TOP)
+
+    def _on_delete(self, task_id: int) -> None:
+        from qfluentwidgets import MessageBox
+
+        item = self._items.get(task_id)
+        if item is None:
+            return
+        box = MessageBox("删除代办", f"确定删除『{item.name}』？", self.window())
+        box.yesButton.setText("删除")
+        box.cancelButton.setText("取消")
+        if box.exec():
+            try:
+                self._service.delete_todo(task_id)
+                InfoBar.success(
+                    "成功", "代办已删除", parent=self.window(), position=InfoBarPosition.TOP
+                )
+            except ValueError as e:
+                InfoBar.error("失败", str(e), parent=self.window(), position=InfoBarPosition.TOP)
 
     def _on_diary_clicked(self) -> None:
         InfoBar.info(
