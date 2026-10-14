@@ -1,7 +1,6 @@
-"""TodoDialog 测试（T10）。
+"""TodoDialog 重复周期与日期联动测试（T11）。"""
 
-MessageBoxBase 需要父窗口（遮罩依赖父窗口尺寸），测试中先建一个主窗口。
-"""
+from datetime import date
 
 import pytest
 from PySide6.QtWidgets import QMainWindow
@@ -18,27 +17,34 @@ def window(qtbot):
     return win
 
 
+def _fill(dialog):
+    dialog.name_edit.setText("测试")
+    dialog.standard_edit.setPlainText("标准")
+
+
 def test_validate_requires_name_and_standard(qtbot, window):
     dialog = TodoDialog(window)
     qtbot.addWidget(dialog)
     assert dialog.validate() is False
     assert dialog.name_error.text()
-
     dialog.name_edit.setText("写周报")
-    assert dialog.validate() is False  # 标准仍为空
-
+    assert dialog.validate() is False
     dialog.standard_edit.setPlainText("发出并收到确认")
     assert dialog.validate() is True
 
 
-def test_get_data(qtbot, window):
+def test_get_data_basic_fields(qtbot, window):
     dialog = TodoDialog(window)
     qtbot.addWidget(dialog)
     dialog.name_edit.setText(" 写周报 ")
     dialog.desc_edit.setPlainText("描述")
     dialog.standard_edit.setPlainText(" 标准 ")
     data = dialog.get_data()
-    assert data == {"name": "写周报", "description": "描述", "standard": "标准"}
+    assert data["name"] == "写周报"
+    assert data["description"] == "描述"
+    assert data["standard"] == "标准"
+    assert data["repeat"] == "none"
+    assert data["day"] is not None
 
 
 def test_edit_mode_prefill(qtbot, window):
@@ -56,3 +62,62 @@ def test_guide_hides_after_input(qtbot, window):
     qtbot.addWidget(dialog)
     dialog.standard_edit.setPlainText("有内容了")
     assert dialog._guide.isHidden()
+
+
+def test_default_repeat_none(qtbot, window):
+    dialog = TodoDialog(window)
+    qtbot.addWidget(dialog)
+    assert dialog.repeat_combo.currentData() == "none"
+    assert dialog.date_stack.currentIndex() == 0
+
+
+def test_daily_returns_range(qtbot, window):
+    dialog = TodoDialog(window)
+    qtbot.addWidget(dialog)
+    dialog.repeat_combo.setCurrentIndex(1)  # 每日
+    assert dialog.date_label.text() == "开始日期"
+    _fill(dialog)
+    data = dialog.get_data()
+    assert data["repeat"] == "daily"
+    assert data["end_date"] is None  # 长期默认勾选
+
+    dialog.long_term_check.setChecked(False)
+    data = dialog.get_data()
+    assert data["end_date"] is not None
+
+
+def test_weekly_stores_single_weekday(qtbot, window):
+    dialog = TodoDialog(window)
+    qtbot.addWidget(dialog)
+    dialog.repeat_combo.setCurrentIndex(2)  # 每周
+    _fill(dialog)
+    dialog.weekday_buttons[0].setChecked(True)
+    dialog.weekday_buttons[3].setChecked(True)  # 单选：后选取消前者
+    assert dialog.weekday_buttons[0].isChecked() is False
+    data = dialog.get_data()
+    assert data["weekday"] == 3
+
+
+def test_monthly_stores_month_day(qtbot, window):
+    dialog = TodoDialog(window)
+    qtbot.addWidget(dialog)
+    dialog.repeat_combo.setCurrentIndex(3)  # 每月
+    _fill(dialog)
+    dialog.month_day_buttons[14].setChecked(True)  # 15 号
+    data = dialog.get_data()
+    assert data["month_day"] == 15
+
+
+def test_edit_repeat_instance_locked(qtbot, window):
+    item = TodoItem(
+        id=1,
+        name="背单词",
+        standard="20 个",
+        date=date.today(),
+        repeat="daily",
+        end_date=None,
+    )
+    dialog = TodoDialog(window, item=item)
+    qtbot.addWidget(dialog)
+    assert dialog.repeat_combo.isEnabled() is False
+    assert dialog.date_stack.isEnabled() is False
