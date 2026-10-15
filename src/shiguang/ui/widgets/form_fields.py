@@ -5,12 +5,14 @@
   这里改为纯文本输入 + 右侧内嵌 Feather 时钟矢量图标；获得焦点时支持鼠标滚轮微调。
 - `ChevronComboBox`：下拉框。隐藏 Qt 原生 down-arrow，改用 Feather
   chevron-down 矢量图标覆盖层。
+- `AutoGrowTextEdit`：多行输入框。内容超过默认行数时自动撑高，不出现内部滚动条
+  （设置 max_lines 时超过上限才回退内部滚动，如归档总结框 §4.4.3：4～8 行）。
 """
 
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtGui import QIntValidator
 from PySide6.QtWidgets import QComboBox, QHBoxLayout, QLabel, QWidget
-from qfluentwidgets import LineEdit
+from qfluentwidgets import LineEdit, TextEdit
 
 from shiguang.ui.icons import colored_pixmap
 from shiguang.ui.theme import Color, FontSize
@@ -131,3 +133,51 @@ class ChevronComboBox(QComboBox):
     def resizeEvent(self, event) -> None:
         super().resizeEvent(event)
         self._arrow.move(self.width() - 14 - 12, (self.height() - 14) // 2)
+
+
+class AutoGrowTextEdit(TextEdit):
+    """随内容自动增高的多行输入框。
+
+    内容超过 min_lines 时自动撑高（不出现内部滚动条）；
+    传入 max_lines 时超过上限才回退为内部滚动（如归档总结框 §4.4.3：最小 4 行、最大 8 行）。
+    超高内容由所在对话框的 QScrollArea 承接滚动。
+    """
+
+    def __init__(
+        self, min_lines: int = 3, max_lines: int | None = None, parent: QWidget | None = None
+    ) -> None:
+        super().__init__(parent)
+        self._min_lines = min_lines
+        self._max_lines = max_lines
+        if max_lines is None:
+            self.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        self.textChanged.connect(self._sync_height)
+        self._sync_height()
+
+    def _height_for(self, lines: int) -> int:
+        """按行数换算像素高度（含文档边距、上下 padding 8px、1px 边框与余量）。"""
+        line_h = self.fontMetrics().lineSpacing()
+        doc_margin = self.document().documentMargin()
+        return int(lines * line_h + doc_margin * 2 + 8 * 2 + 2 + 4)
+
+    def _visual_lines(self) -> int:
+        """可见行数（含自动换行）。需先强制布局，否则未显示时 lineCount 不准。"""
+        doc = self.document()
+        doc.documentLayout().documentSize()  # 强制完成排版
+        lines = 0
+        block = doc.begin()
+        while block.isValid():
+            lines += max(1, block.layout().lineCount())
+            block = block.next()
+        return max(1, lines)
+
+    def _sync_height(self) -> None:
+        height = self._height_for(max(self._min_lines, self._visual_lines()))
+        if self._max_lines is not None:
+            height = min(height, self._height_for(self._max_lines))
+        self.setFixedHeight(height)
+
+    def resizeEvent(self, event) -> None:
+        # 宽度确定/变化后换行数会变，重新计算高度
+        super().resizeEvent(event)
+        self._sync_height()

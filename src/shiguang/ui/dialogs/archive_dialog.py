@@ -21,12 +21,12 @@ from PySide6.QtWidgets import (
     QVBoxLayout,
     QWidget,
 )
-from qfluentwidgets import MessageBoxBase, TextEdit
+from qfluentwidgets import MessageBoxBase
 
 from shiguang.services.dto import ArchiveInput, TodoItem
 from shiguang.ui.icons import colored_icon
 from shiguang.ui.theme import Color, FontSize, Radius, Space, set_container_bg
-from shiguang.ui.widgets.form_fields import NumberField
+from shiguang.ui.widgets.form_fields import AutoGrowTextEdit, NumberField
 from shiguang.ui.widgets.rating_widget import RatingWidget
 
 QUICK_DURATIONS = [15, 30, 45, 60, 90]
@@ -55,6 +55,13 @@ class ArchiveDialog(MessageBoxBase):
         self._item = item
         self.widget.setFixedWidth(580)
         self.widget.setMaximumHeight(_DIALOG_MAX_HEIGHT)
+        # 弹窗内部统一纯白（--surface）：覆盖 fluent 默认的灰色底部按钮栏
+        self.setStyleSheet(
+            self.styleSheet()
+            + f"#buttonGroup {{ background: {Color.SURFACE};"
+            + f" border-top: 1px solid {Color.BG_SECONDARY};"
+            + " border-bottom-left-radius: 8px; border-bottom-right-radius: 8px; }"
+        )
 
         # 标题行
         title_row = QHBoxLayout()
@@ -79,6 +86,8 @@ class ArchiveDialog(MessageBoxBase):
         scroll.setFrameShape(QFrame.Shape.NoFrame)
         scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         scroll.setStyleSheet("QScrollArea { background: transparent; border: none; }")
+        # 视口默认灰底，置透明让弹窗主体的白色透出
+        scroll.viewport().setStyleSheet("background: transparent;")
         content = QWidget()
         content_layout = QVBoxLayout(content)
         content_layout.setContentsMargins(0, 0, 8, 0)
@@ -131,11 +140,10 @@ class ArchiveDialog(MessageBoxBase):
         self.rating.score_changed.connect(self._update_confirm_enabled)
         content_layout.addWidget(self.rating, 0, Qt.AlignmentFlag.AlignLeft)
 
-        # 6. 总结（可选）
+        # 6. 总结（可选，§4.4.3：最小 4 行、最大 8 行，超出默认行数自动撑高）
         content_layout.addLayout(self._field_label("总结（可选）"))
-        self.summary_edit = TextEdit(self.widget)
+        self.summary_edit = AutoGrowTextEdit(min_lines=4, max_lines=8, parent=self.widget)
         self.summary_edit.setPlaceholderText("这次完成得怎么样？有什么可以复用的经验？")
-        self.summary_edit.setFixedHeight(120)
         content_layout.addWidget(self.summary_edit)
         self.counter_label = QLabel("已输入 0/500 字")
         self.counter_label.setStyleSheet(

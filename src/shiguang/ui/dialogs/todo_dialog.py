@@ -29,7 +29,7 @@ from PySide6.QtWidgets import (
     QVBoxLayout,
     QWidget,
 )
-from qfluentwidgets import CalendarPicker, LineEdit, MessageBoxBase, TextEdit
+from qfluentwidgets import CalendarPicker, LineEdit, MessageBoxBase
 
 from shiguang.services.dto import (
     REPEAT_DAILY,
@@ -41,7 +41,7 @@ from shiguang.services.dto import (
 )
 from shiguang.ui.icons import colored_icon
 from shiguang.ui.theme import Color, FontSize, Space
-from shiguang.ui.widgets.form_fields import ChevronComboBox
+from shiguang.ui.widgets.form_fields import AutoGrowTextEdit, ChevronComboBox
 
 _FIELD_QSS = f"""
 LineEdit, TextEdit, QComboBox {{
@@ -111,6 +111,7 @@ class TodoDialog(MessageBoxBase):
         self._editing_repeat = bool(item and item.repeat != REPEAT_NONE)
         self.widget.setFixedWidth(520)
         self.widget.setMaximumHeight(_DIALOG_MAX_HEIGHT)
+        self._unify_background()
 
         # 标题行
         title_row = QHBoxLayout()
@@ -135,6 +136,8 @@ class TodoDialog(MessageBoxBase):
         scroll.setFrameShape(QFrame.Shape.NoFrame)
         scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         scroll.setStyleSheet("QScrollArea { background: transparent; border: none; }")
+        # 视口默认灰底，置透明让弹窗主体的白色透出
+        scroll.viewport().setStyleSheet("background: transparent;")
         form = QWidget()
         form_layout = QVBoxLayout(form)
         form_layout.setContentsMargins(0, 0, 8, 0)
@@ -163,21 +166,19 @@ class TodoDialog(MessageBoxBase):
         # 4. 关联目标（可选，MVP 禁用占位）
         form_layout.addLayout(self._build_goal_area())
 
-        # 5. 描述（可选）
+        # 5. 描述（可选，超过 3 行自动撑高）
         form_layout.addLayout(self._field_label("描述（可选）"))
-        self.desc_edit = TextEdit(self.widget)
+        self.desc_edit = AutoGrowTextEdit(min_lines=3, parent=self.widget)
         self.desc_edit.setPlaceholderText("补充细节、背景信息…")
-        self.desc_edit.setFixedHeight(80)
         self.desc_edit.setStyleSheet(_FIELD_QSS)
         form_layout.addWidget(self.desc_edit)
 
-        # 6. 完成标准 *（核心特色）
+        # 6. 完成标准 *（核心特色，超过 4 行自动撑高）
         form_layout.addLayout(
             self._field_label("完成标准", required=True, hint="💡 明确标准，事后才能高质量复盘")
         )
-        self.standard_edit = TextEdit(self.widget)
+        self.standard_edit = AutoGrowTextEdit(min_lines=4, parent=self.widget)
         self.standard_edit.setPlaceholderText("做到什么程度算完成？具体、可衡量、可验证…")
-        self.standard_edit.setFixedHeight(100)
         self.standard_edit.setStyleSheet(_FIELD_QSS)
         form_layout.addWidget(self.standard_edit)
         self.standard_error = self._error_label()
@@ -209,6 +210,16 @@ class TodoDialog(MessageBoxBase):
             if item.delay_policy in self.delay_buttons:
                 self.delay_buttons[item.delay_policy].setChecked(True)
         self._update_guide()
+
+    # ---------- 外观 ----------
+    def _unify_background(self) -> None:
+        """弹窗内部统一纯白（--surface）：覆盖 fluent 默认的灰色底部按钮栏。"""
+        self.setStyleSheet(
+            self.styleSheet()
+            + f"#buttonGroup {{ background: {Color.SURFACE};"
+            + f" border-top: 1px solid {Color.BG_SECONDARY};"
+            + " border-bottom-left-radius: 8px; border-bottom-right-radius: 8px; }"
+        )
 
     # ---------- 重复周期 + 日期联动 ----------
     def _build_repeat_area(self) -> QVBoxLayout:
