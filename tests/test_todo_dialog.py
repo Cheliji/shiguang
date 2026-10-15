@@ -3,6 +3,7 @@
 from datetime import date
 
 import pytest
+from PySide6.QtCore import QDate
 from PySide6.QtWidgets import QMainWindow
 
 from shiguang.services.dto import TodoItem
@@ -75,15 +76,19 @@ def test_daily_returns_range(qtbot, window):
     dialog = TodoDialog(window)
     qtbot.addWidget(dialog)
     dialog.repeat_combo.setCurrentIndex(1)  # 每日
-    assert dialog.date_label.text() == "开始日期"
+    assert dialog.date_label.text() == "日期范围"
     _fill(dialog)
     data = dialog.get_data()
     assert data["repeat"] == "daily"
-    assert data["end_date"] is None  # 长期默认勾选
+    assert data["end_date"] is None  # 默认不选结束日期 = 长期重复
 
-    dialog.long_term_check.setChecked(False)
+    dialog.end_picker.setDate(QDate.currentDate().addDays(7))
     data = dialog.get_data()
     assert data["end_date"] is not None
+
+    dialog.end_picker.clearDate()
+    data = dialog.get_data()
+    assert data["end_date"] is None
 
 
 def test_weekly_stores_single_weekday(qtbot, window):

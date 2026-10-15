@@ -16,7 +16,6 @@ from datetime import date
 from PySide6.QtCore import QDate, QEasingCurve, QPropertyAnimation, Qt
 from PySide6.QtWidgets import (
     QButtonGroup,
-    QCheckBox,
     QFrame,
     QGridLayout,
     QHBoxLayout,
@@ -287,17 +286,33 @@ class TodoDialog(MessageBoxBase):
         layout.setSpacing(Space.SM)
         self.start_picker = DatePickerButton(page)
         self.start_picker.setDate(QDate.currentDate())
-        self.long_term_check = QCheckBox("长期", page)
-        self.end_picker = DatePickerButton(page)
-        self.end_picker.setDate(QDate.currentDate().addDays(30))
-        # 结束日期始终可点；勾选“长期”时只把文案置为“长期”，提交时忽略该值。
-        self.end_picker.dateChanged.connect(self._on_end_date_changed)
-        self.long_term_check.toggled.connect(self._on_long_term_toggled)
-        self.long_term_check.setChecked(True)
+        to_label = QLabel("至", page)
+        to_label.setStyleSheet(
+            f"color: {Color.TEXT_SECONDARY}; font-size: {FontSize.BODY}px; background: transparent;"
+        )
+        # 结束日期可选（§4.3.2）：不选 = 长期重复；选了可用 × 清除回到长期
+        self.end_picker = DatePickerButton(page, placeholder="结束日期（可选）")
+        self.end_clear = QToolButton(page)
+        self.end_clear.setIcon(colored_icon("x", Color.TEXT_SECONDARY, 14))
+        self.end_clear.setFixedSize(24, 24)
+        self.end_clear.setToolTip("清除结束日期（长期重复）")
+        self.end_clear.setStyleSheet(
+            "QToolButton { border: none; border-radius: 4px; background: transparent; }"
+            f"QToolButton:hover {{ background: {Color.BG_SECONDARY}; }}"
+        )
+        self.end_clear.clicked.connect(self.end_picker.clearDate)
+        self.end_picker.dateChanged.connect(lambda _v: self._sync_end_clear())
+        self.end_picker.dateCleared.connect(self._sync_end_clear)
+        self._sync_end_clear()
         layout.addWidget(self.start_picker)
-        layout.addWidget(self.long_term_check)
+        layout.addWidget(to_label)
         layout.addWidget(self.end_picker)
+        layout.addWidget(self.end_clear)
+        layout.addStretch(1)
         return page
+
+    def _sync_end_clear(self) -> None:
+        self.end_clear.setVisible(self.end_picker.hasDate())
 
     def _page_placeholder(self, text: str) -> QWidget:
         page = QWidget(self.widget)
@@ -366,7 +381,7 @@ class TodoDialog(MessageBoxBase):
             self.date_stack.setCurrentIndex(0)
             self.expand_stack.setCurrentIndex(0)
         elif repeat == REPEAT_DAILY:
-            self.date_label.setText("开始日期")
+            self.date_label.setText("日期范围")
             self.date_stack.setCurrentIndex(1)
             self.expand_stack.setCurrentIndex(1)
         elif repeat == REPEAT_WEEKLY:
@@ -378,16 +393,6 @@ class TodoDialog(MessageBoxBase):
             self.date_stack.setCurrentIndex(3)
             self.expand_stack.setCurrentIndex(3)
 
-    def _on_long_term_toggled(self, checked: bool) -> None:
-        if checked:
-            self.end_picker.setText("长期")
-        else:
-            self.end_picker.setDate(self.end_picker.getDate())
-
-    def _on_end_date_changed(self, _value: QDate) -> None:
-        if self.long_term_check.isChecked():
-            self.long_term_check.setChecked(False)
-
     def _prefill_repeat(self, item: TodoItem) -> None:
         index = self.repeat_combo.findData(item.repeat)
         self.repeat_combo.setCurrentIndex(index)
@@ -396,12 +401,11 @@ class TodoDialog(MessageBoxBase):
         elif item.repeat == REPEAT_DAILY and item.date:
             self.start_picker.setDate(QDate(item.date.year, item.date.month, item.date.day))
             if item.end_date:
-                self.long_term_check.setChecked(False)
                 self.end_picker.setDate(
                     QDate(item.end_date.year, item.end_date.month, item.end_date.day)
                 )
             else:
-                self.long_term_check.setChecked(True)
+                self.end_picker.clearDate()  # 长期重复：结束日期留空
         elif item.repeat == REPEAT_WEEKLY and item.weekday is not None:
             self.weekday_buttons[item.weekday].setChecked(True)
         elif item.repeat == REPEAT_MONTHLY and item.month_day:
@@ -568,11 +572,11 @@ class TodoDialog(MessageBoxBase):
         elif repeat == REPEAT_DAILY:
             qdate = self.start_picker.getDate()
             data["day"] = date(qdate.year(), qdate.month(), qdate.day())
-            if not self.long_term_check.isChecked():
+            if self.end_picker.hasDate():
                 qend = self.end_picker.getDate()
                 data["end_date"] = date(qend.year(), qend.month(), qend.day())
             else:
-                data["end_date"] = None
+                data["end_date"] = None  # 未选结束日期 = 长期重复
         elif repeat == REPEAT_WEEKLY:
             # MVP 约定：单选存入（多选 UI 保留，v1.x 扩展）
             selected = next(
