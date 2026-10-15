@@ -1,11 +1,12 @@
 # 拾光 · UI 设计文档
 
-> 版本：v1.1
+> 版本：v1.2
 > 依据：《拾光产品设计文档》v0.2 + 《拾光技术设计文档》v0.1
 > 设计目标：融合 Kite 待办的极简美学与拾光的"留痕"闭环，输出可直接用于 HTML 原型与 PySide6 实现的视觉规范
 > 更新记录：
 > - v1.0 首次创建
 > - v1.1 ①标题栏改为无边框窗口 + 自绘标题栏（§3.3）；②重复="每日"的日期改为范围选择（§4.3.3）；③日记编辑器改为实时渲染（§4.5.3）；④图标强制使用成熟矢量图标库（§9.2）
+> - v1.2 新增 §9.3.1：Qt 样式表（QSS）背景级联规则——容器禁止无选择器 `background`
 
 ---
 
@@ -1205,6 +1206,19 @@ prototype/
 | 图表                   | `PySide6.QtCharts.QBarSeries` / 自绘                       |
 | InfoBar 提示           | `qfluentwidgets.InfoBar`（自带）                           |
 | 导航栏                 | `NavigationInterface` 或自绘 `QWidget`                     |
+
+#### 9.3.1 Qt 样式表（QSS）背景级联规则（强制）
+
+QSS 与前端 CSS 的关键差异：设置在控件上的样式表会**沿控件父子树向下级联**。在容器上写无选择器的 `background`（如 `container.setStyleSheet("background: #F3F4F6;")`），等价于对该容器子树内的 `* { background }`，会导致所有后代 QLabel / 图标控件被涂上一层祖先的背景色块，出现"文字/图标背景与所在卡片背景冲突"的现象。同理，类型选择器（如 `QFrame { ... }`）会匹配后代中所有该类型的子类（QLabel 继承自 QFrame），容器上同样禁止使用。
+
+**规则**：
+
+1. **容器**背景必须使用限定选择器，只作用于自身：
+   - 自定义控件：用类选择器，如 `TaskCard { background: ... }`（类名不匹配后代，天然安全）；
+   - 通用容器（QWidget/QFrame）：用 objectName 选择器，统一通过 `shiguang.ui.theme.set_container_bg(widget, name, color, radius)` 辅助函数设置；
+   - 需要额外声明（如 border-left）时，手写 `#objectName { ... }`。
+2. **叶子控件**（自身就是要显示底色的 Pill / Badge / 分割线 / 圆点，且无子控件）允许无选择器写法。
+3. 文字/图标等展示控件不设置背景，保持透明，由所在容器统一提供背景色。
 
 ### 9.4 实现优先级
 

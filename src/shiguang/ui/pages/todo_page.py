@@ -21,7 +21,7 @@ from qfluentwidgets import InfoBar, InfoBarPosition
 
 from shiguang.services import get_task_service
 from shiguang.services.dto import TodoItem
-from shiguang.ui.theme import Color, FontSize, Space
+from shiguang.ui.theme import Color, FontSize, Radius, Space, set_container_bg
 from shiguang.ui.widgets.buttons import primary_button
 from shiguang.ui.widgets.task_card import TaskCard
 
@@ -57,7 +57,7 @@ class TodoPage(QWidget):
         root.addWidget(scroll)
 
         container = QWidget()
-        container.setStyleSheet(f"background: {Color.BG_PRIMARY};")
+        set_container_bg(container, "todoPageContainer", Color.BG_PRIMARY)
         scroll.setWidget(container)
 
         layout = QVBoxLayout(container)
@@ -89,7 +89,7 @@ class TodoPage(QWidget):
 
     def _build_filter_bar(self) -> QFrame:
         bar = QFrame(self)
-        bar.setStyleSheet(f"QFrame {{ background: {Color.SURFACE}; border-radius: 12px; }}")
+        set_container_bg(bar, "todoFilterBar", Color.SURFACE, Radius.LG)
         row = QHBoxLayout(bar)
         row.setContentsMargins(Space.LG, Space.SM, Space.LG, Space.SM)
         row.setSpacing(Space.XS)

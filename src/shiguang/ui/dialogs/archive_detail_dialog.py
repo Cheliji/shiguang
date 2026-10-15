@@ -4,7 +4,7 @@ from PySide6.QtWidgets import QHBoxLayout, QLabel, QVBoxLayout, QWidget
 from qfluentwidgets import MessageBoxBase
 
 from shiguang.services.dto import TodoItem
-from shiguang.ui.theme import Color, FontSize, Space
+from shiguang.ui.theme import Color, FontSize, Radius, Space, set_container_bg
 from shiguang.ui.widgets.rating_widget import RatingWidget
 
 
@@ -47,7 +47,7 @@ class ArchiveDetailDialog(MessageBoxBase):
             self.viewLayout.addLayout(row)
 
             summary_box = QWidget(self.widget)
-            summary_box.setStyleSheet(f"background: {Color.BG_PRIMARY}; border-radius: 8px;")
+            set_container_bg(summary_box, "archiveSummaryBox", Color.BG_PRIMARY, Radius.MD)
             summary_layout = QVBoxLayout(summary_box)
             summary_layout.setContentsMargins(Space.MD, Space.MD, Space.MD, Space.MD)
             summary = QLabel(item.summary or "（无总结）")

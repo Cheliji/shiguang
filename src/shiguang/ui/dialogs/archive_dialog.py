@@ -10,7 +10,7 @@ from qfluentwidgets import MessageBoxBase, SpinBox, TextEdit
 
 from shiguang.services.dto import ArchiveInput, TodoItem
 from shiguang.ui.icons import colored_icon
-from shiguang.ui.theme import Color, FontSize, Space
+from shiguang.ui.theme import Color, FontSize, Radius, Space, set_container_bg
 from shiguang.ui.widgets.rating_widget import RatingWidget
 
 QUICK_DURATIONS = [15, 30, 45, 60, 90]
@@ -135,7 +135,7 @@ class ArchiveDialog(MessageBoxBase):
     def _build_info_card(self) -> QWidget:
         """只读任务信息卡（§4.4.3）。"""
         card = QWidget(self.widget)
-        card.setStyleSheet(f"background: {Color.BG_PRIMARY}; border-radius: 12px;")
+        set_container_bg(card, "archiveInfoCard", Color.BG_PRIMARY, Radius.LG)
         layout = QVBoxLayout(card)
         layout.setContentsMargins(Space.LG, Space.LG, Space.LG, Space.LG)
         layout.setSpacing(Space.SM)
@@ -158,9 +158,10 @@ class ArchiveDialog(MessageBoxBase):
 
         # 完成标准子卡（白底 + 左侧 4px 主色竖条）
         sub = QWidget(card)
+        sub.setObjectName("archiveStandardSub")
         sub.setStyleSheet(
-            f"background: {Color.SURFACE}; border-left: 4px solid {Color.PRIMARY};"
-            " border-radius: 8px;"
+            f"#archiveStandardSub {{ background: {Color.SURFACE};"
+            f" border-left: 4px solid {Color.PRIMARY}; border-radius: 8px; }}"
         )
         sub_layout = QVBoxLayout(sub)
         sub_layout.setContentsMargins(Space.MD, Space.MD, Space.MD, Space.MD)

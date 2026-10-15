@@ -3,6 +3,24 @@
 所有自定义组件禁止硬编码色值/尺寸，一律从本模块取。
 """
 
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from PySide6.QtWidgets import QWidget
+
+
+def set_container_bg(widget: "QWidget", object_name: str, color: str, radius: int = 0) -> None:
+    """给【容器】设置背景色，强制用 objectName 限定选择器作用域。
+
+    禁止对容器使用无选择器的 setStyleSheet("background: ...")：QSS 规则会沿
+    父子树级联，导致后代文字/图标控件被涂上祖先背景色块（详见 AGENT.md「UI 样式规则」）。
+    """
+    widget.setObjectName(object_name)
+    rules = f"background: {color};"
+    if radius:
+        rules += f" border-radius: {radius}px;"
+    widget.setStyleSheet(f"#{object_name} {{ {rules} }}")
+
 
 class Color:
     """色彩（§2.1）。"""

@@ -23,7 +23,7 @@ from qfluentwidgets import InfoBar, InfoBarPosition
 
 from shiguang.services import get_task_service
 from shiguang.services.dto import TodoItem
-from shiguang.ui.theme import Color, FontSize, Space
+from shiguang.ui.theme import Color, FontSize, Space, set_container_bg
 from shiguang.ui.widgets.buttons import ghost_button, primary_button, secondary_button
 from shiguang.ui.widgets.date_bar import DateBar
 from shiguang.ui.widgets.task_card import TaskCard
@@ -74,7 +74,7 @@ class TodayPage(QWidget):
         root.addWidget(scroll)
 
         container = QWidget()
-        container.setStyleSheet(f"background: {Color.BG_PRIMARY};")
+        set_container_bg(container, "todayPageContainer", Color.BG_PRIMARY)
         scroll.setWidget(container)
 
         layout = QVBoxLayout(container)
