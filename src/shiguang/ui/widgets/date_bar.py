@@ -56,15 +56,18 @@ class DayItem(QFrame):
         self.weekday_label = QLabel(self)
         self.weekday_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.weekday_label.setStyleSheet(f"font-size: {FontSize.TINY}px;")
+        self.weekday_label.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents)
         layout.addWidget(self.weekday_label)
 
         self.day_label = QLabel(self)
         self.day_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.day_label.setStyleSheet(f"font-size: {FontSize.BODY}px;")
+        self.day_label.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents)
         layout.addWidget(self.day_label)
 
         self.dot = QLabel(self)
         self.dot.setFixedSize(4, 4)
+        self.dot.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents)
         self.dot.hide()
         dot_row = QHBoxLayout()
         dot_row.setContentsMargins(0, 0, 0, 0)

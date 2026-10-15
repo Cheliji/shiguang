@@ -33,7 +33,11 @@ def test_page_renders_seed_data(qtbot):
     service = MockTaskService(with_seed=True)
     page = _make_page(qtbot, service)
     today = date.today()
-    expected = len(service.list_today(today)) + len(service.list_overdue())
+    expected = (
+        len(service.list_today(today))
+        + len(service.list_overdue())
+        + len(service.list_archived(today))
+    )
     assert page.count_badge.text() == str(expected)
 
 

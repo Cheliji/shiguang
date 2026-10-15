@@ -78,7 +78,9 @@ class CheckBox(QWidget):
         painter.drawRoundedRect(rect, 6, 6)
 
         if self._checked:
-            painter.setPen(QPen(QColor("#FFFFFF"), 2, Qt.PenStyle.SolidLine, Qt.PenStyle.RoundCap))
+            painter.setPen(
+                QPen(QColor("#FFFFFF"), 2, Qt.PenStyle.SolidLine, Qt.PenCapStyle.RoundCap)
+            )
             painter.drawLine(6, 10, 9, 13)
             painter.drawLine(9, 13, 14, 6)
         painter.end()

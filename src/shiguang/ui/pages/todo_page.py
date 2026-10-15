@@ -146,9 +146,14 @@ class TodoPage(QWidget):
         self._clear_list()
 
         if tab == 0:  # 今日
-            overdue = self._service.list_overdue()
-            items = self._service.list_today(today)
-            all_items = overdue + items
+            # 今日视图固定“今天及逾期未处理”；日期筛选进一步收窄回溯范围
+            all_items = [
+                i for i in self._service.list_pending() if i.date is not None and i.date <= today
+            ]
+            if self.date_filter.currentIndex() != 0:
+                all_items = self._filter_by_date(all_items, use_archived=False)
+            overdue = [i for i in all_items if i.date < today]
+            items = [i for i in all_items if i.date == today]
             if not all_items:
                 self._empty("今天还没有代办", "添加一个代办，开始高效的一天")
                 return
@@ -176,6 +181,8 @@ class TodoPage(QWidget):
 
         elif tab == 2:  # 逾期
             items = self._service.list_overdue()
+            if self.date_filter.currentIndex() != 0:
+                items = self._filter_by_date(items, use_archived=False)
             if not items:
                 self._empty("暂无逾期代办", "太棒了，全部按时完成！")
                 return

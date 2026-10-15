@@ -22,7 +22,7 @@ from PySide6.QtWidgets import (
 from qfluentwidgets import InfoBar, InfoBarPosition
 
 from shiguang.services import get_task_service
-from shiguang.services.dto import TodoItem
+from shiguang.services.dto import STATUS_ARCHIVED, TodoItem
 from shiguang.ui.theme import Color, FontSize, Space, set_container_bg
 from shiguang.ui.widgets.buttons import ghost_button, primary_button, secondary_button
 from shiguang.ui.widgets.date_bar import DateBar
@@ -231,14 +231,15 @@ class TodayPage(QWidget):
         # DateBar 圆点
         self.date_bar.set_todo_dates(self._service.list_todo_dates())
 
-        # 列表：今日视图下逾期置顶分组
+        # 列表：今日视图下逾期置顶分组；已归档代办同样展示（§4.2.4 卡片归档态）
         overdue = self._service.list_overdue() if day == today else []
         items = self._service.list_today(day)
-        self.count_badge.setText(str(len(items) + len(overdue)))
+        archived = self._service.list_archived(day)
+        self.count_badge.setText(str(len(items) + len(overdue) + len(archived)))
 
         self._items.clear()
         self._clear_list()
-        if not overdue and not items:
+        if not overdue and not items and not archived:
             self._add_empty_state()
             return
 
@@ -252,6 +253,15 @@ class TodayPage(QWidget):
                 self._add_card(item)
         for item in items:
             self._add_card(item)
+        if archived:
+            header = QLabel(f"✅ 已归档（{len(archived)}）")
+            header.setStyleSheet(
+                f"color: {Color.TEXT_SECONDARY}; font-size: {FontSize.AUXILIARY}px;"
+                " font-weight: 500;"
+            )
+            self.list_layout.addWidget(header)
+            for item in archived:
+                self._add_card(item)
 
     def _clear_list(self) -> None:
         while self.list_layout.count():
@@ -263,9 +273,12 @@ class TodayPage(QWidget):
         self._items[item.id] = item
         card = TaskCard(self)
         card.set_data(item)
-        card.archive_requested.connect(self._on_archive)
-        card.edit_requested.connect(self._on_edit)
-        card.delete_requested.connect(self._on_delete)
+        if item.status == STATUS_ARCHIVED:
+            card.details_requested.connect(self._on_details)
+        else:
+            card.archive_requested.connect(self._on_archive)
+            card.edit_requested.connect(self._on_edit)
+            card.delete_requested.connect(self._on_delete)
         self.list_layout.addWidget(card)
 
     def _add_empty_state(self) -> None:
@@ -358,6 +371,15 @@ class TodayPage(QWidget):
                 )
             except ValueError as e:
                 InfoBar.error("失败", str(e), parent=self.window(), position=InfoBarPosition.TOP)
+
+    def _on_details(self, task_id: int) -> None:
+        from shiguang.ui.dialogs.archive_detail_dialog import ArchiveDetailDialog
+
+        item = self._items.get(task_id)
+        if item is None or item.status != STATUS_ARCHIVED:
+            return
+        dialog = ArchiveDetailDialog(self.window(), item=item)
+        dialog.exec()
 
     def _on_diary_clicked(self) -> None:
         InfoBar.info(
