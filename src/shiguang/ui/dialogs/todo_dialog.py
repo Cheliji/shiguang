@@ -2,7 +2,13 @@
 
 T10：名称/描述/完成标准（必填校验）。
 T11：重复周期 + 日期联动（不重复→日期；每日→日期范围；每周→星期多选；每月→1-31 网格）。
-T12：延期策略单选组 + 关联目标占位（后续任务）。
+T12：延期策略单选组 + 关联目标占位（禁用）。
+
+重写要点（对齐 §4.3.1/§4.3.2 与 AGENT.md「UI 样式规则」）：
+- 表单内容放入 QScrollArea（§4.3.1：最大高度 680px，超出内部滚动），字段不再被挤压；
+- 字段顺序严格按 §4.3.2：名称 → 重复周期+计划日期 → 延期策略 → 关联目标 → 描述 → 完成标准；
+- 下拉箭头使用 Feather chevron-down 矢量图标（ChevronComboBox），不使用 Qt 原生箭头；
+- 容器背景一律经 set_container_bg / 限定选择器，禁止无选择器 background（§9.3.1）。
 """
 
 from datetime import date
@@ -11,11 +17,13 @@ from PySide6.QtCore import QDate, QEasingCurve, QPropertyAnimation, Qt
 from PySide6.QtWidgets import (
     QButtonGroup,
     QCheckBox,
-    QComboBox,
+    QFrame,
     QGridLayout,
     QHBoxLayout,
     QLabel,
     QPushButton,
+    QRadioButton,
+    QScrollArea,
     QStackedWidget,
     QToolButton,
     QVBoxLayout,
@@ -33,6 +41,7 @@ from shiguang.services.dto import (
 )
 from shiguang.ui.icons import colored_icon
 from shiguang.ui.theme import Color, FontSize, Space
+from shiguang.ui.widgets.form_fields import ChevronComboBox
 
 _FIELD_QSS = f"""
 LineEdit, TextEdit, QComboBox {{
@@ -45,6 +54,7 @@ LineEdit, TextEdit, QComboBox {{
 LineEdit:focus, TextEdit:focus {{
     border: 1px solid {Color.PRIMARY};
 }}
+{ChevronComboBox.arrow_qss()}
 """
 
 _ERROR_QSS = f"""
@@ -68,17 +78,39 @@ QPushButton:checked {{
 }}
 """
 
+_RADIO_QSS = f"""
+QRadioButton {{
+    font-size: {FontSize.BODY}px;
+    color: {Color.TEXT_PRIMARY};
+    spacing: 6px;
+}}
+QRadioButton::indicator {{
+    width: 16px;
+    height: 16px;
+}}
+"""
+
 WEEKDAY_NAMES = ["一", "二", "三", "四", "五", "六", "日"]
+
+# 每月 1~31 网格按钮：32px 固定尺寸，不能带水平内边距，否则两位数字会被裁切
+_GRID_PILL_QSS = _PILL_QSS.replace("padding: 6px 12px;", "padding: 0;")
+
+# §4.3.1：弹窗最大高度 680px，超出内部滚动
+_DIALOG_MAX_HEIGHT = 680
 
 
 class TodoDialog(MessageBoxBase):
-    """创建/编辑代办对话框。校验通过后 accept()，调用方用 get_data() 取数据。"""
+    """创建/编辑代办对话框。校验通过后 accept()，调用方用 get_data() 取数据。
+
+    MVP 约定（T11 备注）：每周/每月多选 UI 保留，但存储取单选值，v1.x 扩展列表字段。
+    """
 
     def __init__(self, parent: QWidget | None = None, item: TodoItem | None = None) -> None:
         super().__init__(parent)
         self._item = item
         self._editing_repeat = bool(item and item.repeat != REPEAT_NONE)
         self.widget.setFixedWidth(520)
+        self.widget.setMaximumHeight(_DIALOG_MAX_HEIGHT)
 
         # 标题行
         title_row = QHBoxLayout()
@@ -88,7 +120,7 @@ class TodoDialog(MessageBoxBase):
         close_button.setIcon(colored_icon("x", Color.TEXT_SECONDARY, 16))
         close_button.setFixedSize(24, 24)
         close_button.setStyleSheet(
-            "QToolButton { border: none; border-radius: 4px; }"
+            "QToolButton { border: none; border-radius: 4px; background: transparent; }"
             f"QToolButton:hover {{ background: {Color.DANGER_LIGHT}; }}"
         )
         close_button.clicked.connect(self.reject)
@@ -97,37 +129,61 @@ class TodoDialog(MessageBoxBase):
         title_row.addWidget(close_button)
         self.viewLayout.addLayout(title_row)
 
-        # 代办名称 *
-        self.viewLayout.addLayout(self._field_label("代办名称", required=True))
+        # 表单滚动区（§4.3.1：超出最大高度时内部滚动，滚轮可用）
+        scroll = QScrollArea(self.widget)
+        scroll.setWidgetResizable(True)
+        scroll.setFrameShape(QFrame.Shape.NoFrame)
+        scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        scroll.setStyleSheet("QScrollArea { background: transparent; border: none; }")
+        form = QWidget()
+        form_layout = QVBoxLayout(form)
+        form_layout.setContentsMargins(0, 0, 8, 0)
+        form_layout.setSpacing(Space.XS)
+        scroll.setWidget(form)
+        self.viewLayout.addWidget(scroll, 1)
+
+        # ===== 字段顺序严格按 §4.3.2 =====
+
+        # 1. 代办名称 *
+        form_layout.addLayout(self._field_label("代办名称", required=True))
         self.name_edit = LineEdit(self.widget)
         self.name_edit.setPlaceholderText("输入代办名称…")
         self.name_edit.setFixedHeight(40)
         self.name_edit.setStyleSheet(_FIELD_QSS)
-        self.viewLayout.addWidget(self.name_edit)
+        form_layout.addWidget(self.name_edit)
         self.name_error = self._error_label()
-        self.viewLayout.addWidget(self.name_error)
+        form_layout.addWidget(self.name_error)
 
-        # 描述（可选）
-        self.viewLayout.addLayout(self._field_label("描述（可选）"))
+        # 2. 重复周期 + 计划日期（并排两列）+ 联动展开区
+        form_layout.addLayout(self._build_repeat_area())
+
+        # 3. 延期策略
+        form_layout.addLayout(self._build_delay_area())
+
+        # 4. 关联目标（可选，MVP 禁用占位）
+        form_layout.addLayout(self._build_goal_area())
+
+        # 5. 描述（可选）
+        form_layout.addLayout(self._field_label("描述（可选）"))
         self.desc_edit = TextEdit(self.widget)
         self.desc_edit.setPlaceholderText("补充细节、背景信息…")
         self.desc_edit.setFixedHeight(80)
         self.desc_edit.setStyleSheet(_FIELD_QSS)
-        self.viewLayout.addWidget(self.desc_edit)
+        form_layout.addWidget(self.desc_edit)
 
-        # 完成标准 *
-        self.viewLayout.addLayout(
+        # 6. 完成标准 *（核心特色）
+        form_layout.addLayout(
             self._field_label("完成标准", required=True, hint="💡 明确标准，事后才能高质量复盘")
         )
         self.standard_edit = TextEdit(self.widget)
         self.standard_edit.setPlaceholderText("做到什么程度算完成？具体、可衡量、可验证…")
         self.standard_edit.setFixedHeight(100)
         self.standard_edit.setStyleSheet(_FIELD_QSS)
-        self.viewLayout.addWidget(self.standard_edit)
+        form_layout.addWidget(self.standard_edit)
         self.standard_error = self._error_label()
-        self.viewLayout.addWidget(self.standard_error)
+        form_layout.addWidget(self.standard_error)
 
-        # 软引导
+        # 软引导（框内右下角提示，随输入消失）
         self._guide = QLabel(
             "建议：用『输出物』+『标准』描述，\n如『输出读书笔记 3 条，能复述作者核心观点』",
             self.standard_edit,
@@ -139,12 +195,7 @@ class TodoDialog(MessageBoxBase):
         self._guide.adjustSize()
         self.standard_edit.textChanged.connect(self._update_guide)
 
-        # 重复周期 + 日期联动（T11）
-        self.viewLayout.addLayout(self._build_repeat_area())
-
-        # 延期策略 + 关联目标（T12）
-        self.viewLayout.addLayout(self._build_delay_area())
-        self.viewLayout.addLayout(self._build_goal_area())
+        form_layout.addStretch(1)
 
         # 按钮
         self.yesButton.setText("保存修改" if item else "创建代办")
@@ -163,14 +214,15 @@ class TodoDialog(MessageBoxBase):
     def _build_repeat_area(self) -> QVBoxLayout:
         area = QVBoxLayout()
         area.setContentsMargins(0, 0, 0, 0)
-        area.setSpacing(Space.SM)
+        area.setSpacing(Space.XS)
 
         row = QHBoxLayout()
         row.setSpacing(Space.MD)
 
         col_repeat = QVBoxLayout()
-        col_repeat.addWidget(QLabel("重复周期"))
-        self.repeat_combo = QComboBox(self.widget)
+        col_repeat.setSpacing(Space.XS)
+        col_repeat.addWidget(self._plain_label("重复周期"))
+        self.repeat_combo = ChevronComboBox(self.widget)
         for value in (REPEAT_NONE, REPEAT_DAILY, REPEAT_WEEKLY, REPEAT_MONTHLY):
             self.repeat_combo.addItem(REPEAT_LABELS[value], value)
         self.repeat_combo.setFixedHeight(40)
@@ -180,7 +232,8 @@ class TodoDialog(MessageBoxBase):
         row.addLayout(col_repeat, 1)
 
         col_date = QVBoxLayout()
-        self.date_label = QLabel("计划日期")
+        col_date.setSpacing(Space.XS)
+        self.date_label = self._plain_label("计划日期")
         col_date.addWidget(self.date_label)
         self.date_stack = QStackedWidget(self.widget)
         self.date_stack.addWidget(self._page_none())
@@ -193,12 +246,14 @@ class TodoDialog(MessageBoxBase):
 
         area.addLayout(row)
 
-        # 展开区（每周/每月）
+        # 展开区（每周/每月）——不重复/每日时整体隐藏，避免 QStackedLayout
+        # 按最大子页预留高度造成大片空白
         self.expand_stack = QStackedWidget(self.widget)
-        self.expand_stack.addWidget(QWidget())  # 空占位
+        self.expand_stack.addWidget(QWidget())  # 空占位（不重复）
         self.expand_stack.addWidget(QWidget())  # 空占位（每日无展开）
         self.expand_stack.addWidget(self._expand_weekly())
         self.expand_stack.addWidget(self._expand_monthly())
+        self.expand_stack.setVisible(False)
         area.addWidget(self.expand_stack)
 
         return area
@@ -212,71 +267,6 @@ class TodoDialog(MessageBoxBase):
         layout.addWidget(self.date_picker)
         layout.addStretch(1)
         return page
-
-    def _build_delay_area(self) -> QVBoxLayout:
-        area = QVBoxLayout()
-        area.setContentsMargins(0, 0, 0, 0)
-        area.setSpacing(Space.XS)
-
-        area.addLayout(self._field_label("延期策略"))
-
-        row = QHBoxLayout()
-        row.setSpacing(Space.LG)
-        self.delay_group = QButtonGroup(self.widget)
-        self.delay_group.setExclusive(True)
-        self.delay_buttons: dict[str, QCheckBox] = {}
-        for i, (value, label) in enumerate(
-            (("default", "默认（不延期）"), ("never", "不延期"), ("auto", "自动延期"))
-        ):
-            radio = QCheckBox(label, self.widget)
-            radio.setStyleSheet(f"font-size: {FontSize.BODY}px; color: {Color.TEXT_PRIMARY};")
-            radio.setProperty("delay_value", value)
-            self.delay_group.addButton(radio, i)
-            row.addWidget(radio)
-            self.delay_buttons[value] = radio
-        self.delay_buttons["default"].setChecked(True)
-        row.addStretch(1)
-        area.addLayout(row)
-
-        hint = QLabel("自动延期：过期未完成将顺延至次日")
-        hint.setStyleSheet(f"color: {Color.TEXT_TERTIARY}; font-size: {FontSize.TINY}px;")
-        area.addWidget(hint)
-        return area
-
-    def _build_goal_area(self) -> QVBoxLayout:
-        area = QVBoxLayout()
-        area.setContentsMargins(0, 0, 0, 0)
-        area.setSpacing(Space.XS)
-
-        area.addLayout(self._field_label("关联目标（可选）"))
-
-        self.goal_edit = LineEdit(self.widget)
-        self.goal_edit.setPlaceholderText("目标模块上线后可关联")
-        self.goal_edit.setFixedHeight(40)
-        self.goal_edit.setEnabled(False)
-        self.goal_edit.setStyleSheet(_FIELD_QSS)
-        area.addWidget(self.goal_edit)
-
-        hint = QLabel("MVP 暂未启用（目标计划属 v1.0）")
-        hint.setStyleSheet(f"color: {Color.TEXT_TERTIARY}; font-size: {FontSize.TINY}px;")
-        area.addWidget(hint)
-        return area
-
-    def _page_placeholder(self, text: str) -> QWidget:
-        page = QWidget(self.widget)
-        layout = QHBoxLayout(page)
-        layout.setContentsMargins(0, 0, 0, 0)
-        label = QLabel(text)
-        label.setStyleSheet(f"color: {Color.TEXT_TERTIARY}; font-size: {FontSize.AUXILIARY}px;")
-        layout.addWidget(label)
-        layout.addStretch(1)
-        return page
-
-    def _selected_delay_policy(self) -> str:
-        for value, radio in self.delay_buttons.items():
-            if radio.isChecked():
-                return value
-        return "default"
 
     def _page_daily(self) -> QWidget:
         page = QWidget(self.widget)
@@ -295,10 +285,21 @@ class TodoDialog(MessageBoxBase):
         layout.addWidget(self.end_picker)
         return page
 
+    def _page_placeholder(self, text: str) -> QWidget:
+        page = QWidget(self.widget)
+        layout = QHBoxLayout(page)
+        layout.setContentsMargins(0, 0, 0, 0)
+        label = QLabel(text)
+        label.setStyleSheet(f"color: {Color.TEXT_TERTIARY}; font-size: {FontSize.AUXILIARY}px;")
+        layout.addWidget(label)
+        layout.addStretch(1)
+        return page
+
     def _expand_weekly(self) -> QWidget:
         page = QWidget(self.widget)
         layout = QVBoxLayout(page)
         layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(Space.XS)
         hint = QLabel("选择重复的星期（可多选）")
         hint.setStyleSheet(f"color: {Color.TEXT_SECONDARY}; font-size: {FontSize.AUXILIARY}px;")
         layout.addWidget(hint)
@@ -323,6 +324,7 @@ class TodoDialog(MessageBoxBase):
         page = QWidget(self.widget)
         layout = QVBoxLayout(page)
         layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(Space.XS)
         hint = QLabel("选择每月的重复日期")
         hint.setStyleSheet(f"color: {Color.TEXT_SECONDARY}; font-size: {FontSize.AUXILIARY}px;")
         layout.addWidget(hint)
@@ -335,7 +337,7 @@ class TodoDialog(MessageBoxBase):
             button = QPushButton(str(day), page)
             button.setCheckable(True)
             button.setFixedSize(32, 32)
-            button.setStyleSheet(_PILL_QSS)
+            button.setStyleSheet(_GRID_PILL_QSS)
             self.month_day_group.addButton(button, day)
             grid.addWidget(button, (day - 1) // 7, (day - 1) % 7)
             self.month_day_buttons.append(button)
@@ -344,6 +346,7 @@ class TodoDialog(MessageBoxBase):
 
     def _on_repeat_changed(self, index: int) -> None:
         repeat = self.repeat_combo.currentData()
+        self.expand_stack.setVisible(repeat in (REPEAT_WEEKLY, REPEAT_MONTHLY))
         if repeat == REPEAT_NONE:
             self.date_label.setText("计划日期")
             self.date_stack.setCurrentIndex(0)
@@ -389,7 +392,69 @@ class TodoDialog(MessageBoxBase):
             for button in self.weekday_buttons + self.month_day_buttons:
                 button.setEnabled(False)
 
+    # ---------- 延期策略（T12，§4.3.3 圆形单选组） ----------
+    def _build_delay_area(self) -> QVBoxLayout:
+        area = QVBoxLayout()
+        area.setContentsMargins(0, 0, 0, 0)
+        area.setSpacing(Space.XS)
+
+        area.addLayout(self._field_label("延期策略"))
+
+        row = QHBoxLayout()
+        row.setSpacing(Space.LG)
+        self.delay_group = QButtonGroup(self.widget)
+        self.delay_group.setExclusive(True)
+        self.delay_buttons: dict[str, QRadioButton] = {}
+        for i, (value, label) in enumerate(
+            (("default", "默认（不延期）"), ("never", "不延期"), ("auto", "自动延期"))
+        ):
+            radio = QRadioButton(label, self.widget)
+            radio.setStyleSheet(_RADIO_QSS)
+            radio.setProperty("delay_value", value)
+            self.delay_group.addButton(radio, i)
+            row.addWidget(radio)
+            self.delay_buttons[value] = radio
+        self.delay_buttons["default"].setChecked(True)
+        row.addStretch(1)
+        area.addLayout(row)
+
+        hint = QLabel("自动延期：过期未完成将顺延至次日")
+        hint.setStyleSheet(f"color: {Color.TEXT_TERTIARY}; font-size: {FontSize.TINY}px;")
+        area.addWidget(hint)
+        return area
+
+    def _selected_delay_policy(self) -> str:
+        for value, radio in self.delay_buttons.items():
+            if radio.isChecked():
+                return value
+        return "default"
+
+    # ---------- 关联目标（T12，MVP 禁用占位） ----------
+    def _build_goal_area(self) -> QVBoxLayout:
+        area = QVBoxLayout()
+        area.setContentsMargins(0, 0, 0, 0)
+        area.setSpacing(Space.XS)
+
+        area.addLayout(self._field_label("关联目标（可选）"))
+
+        self.goal_edit = LineEdit(self.widget)
+        self.goal_edit.setPlaceholderText("目标模块上线后可关联")
+        self.goal_edit.setFixedHeight(40)
+        self.goal_edit.setEnabled(False)
+        self.goal_edit.setStyleSheet(_FIELD_QSS)
+        area.addWidget(self.goal_edit)
+
+        hint = QLabel("MVP 暂未启用（目标计划属 v1.0）")
+        hint.setStyleSheet(f"color: {Color.TEXT_TERTIARY}; font-size: {FontSize.TINY}px;")
+        area.addWidget(hint)
+        return area
+
     # ---------- 表单部件 ----------
+    def _plain_label(self, text: str) -> QLabel:
+        label = QLabel(text)
+        label.setStyleSheet(f"font-size: {FontSize.BODY}px; font-weight: 500;")
+        return label
+
     def _field_label(self, text: str, required: bool = False, hint: str = "") -> QHBoxLayout:
         row = QHBoxLayout()
         row.setContentsMargins(0, Space.SM, 0, 0)

@@ -1,16 +1,32 @@
 """归档弹窗（规格：UI 设计文档 §4.4）——拾光核心"留痕"仪式。
 
-结构：只读任务信息卡（含完成标准子卡）→ 分隔线 → 归档信息区
+结构（§4.4.2）：只读任务信息卡（含完成标准子卡）→ 分隔线 → 归档信息区
 （用时 + 快捷标签 / 评分 + 标签 / 总结可选 + 字数统计）→ 绿色确认按钮。
+
+重写要点（对齐 §4.4.1/§4.4.3 与 AGENT.md「UI 样式规则」）：
+- 内容放入 QScrollArea（§4.4.1：最大高度 720px，超出内部滚动），区域不再被挤压；
+- 代办用时的数字输入使用 NumberField（无 Qt 原生步进箭头，右侧内嵌 Feather 时钟图标），
+  原生 SpinBox 的 ^ v 子控件点击精度差，已被图标规则禁止（§9.3.2）；
+- 容器背景一律经 set_container_bg / 限定选择器，禁止无选择器 background（§9.3.1）。
 """
 
 from PySide6.QtCore import Qt
-from PySide6.QtWidgets import QHBoxLayout, QLabel, QPushButton, QToolButton, QVBoxLayout, QWidget
-from qfluentwidgets import MessageBoxBase, SpinBox, TextEdit
+from PySide6.QtWidgets import (
+    QFrame,
+    QHBoxLayout,
+    QLabel,
+    QPushButton,
+    QScrollArea,
+    QToolButton,
+    QVBoxLayout,
+    QWidget,
+)
+from qfluentwidgets import MessageBoxBase, TextEdit
 
 from shiguang.services.dto import ArchiveInput, TodoItem
 from shiguang.ui.icons import colored_icon
 from shiguang.ui.theme import Color, FontSize, Radius, Space, set_container_bg
+from shiguang.ui.widgets.form_fields import NumberField
 from shiguang.ui.widgets.rating_widget import RatingWidget
 
 QUICK_DURATIONS = [15, 30, 45, 60, 90]
@@ -27,6 +43,9 @@ QPushButton:checked {{
 }}
 """
 
+# §4.4.1：弹窗最大高度 720px，超出内部滚动
+_DIALOG_MAX_HEIGHT = 720
+
 
 class ArchiveDialog(MessageBoxBase):
     """代办归档弹窗。确认后调用方通过 get_data() 取 ArchiveInput。"""
@@ -35,6 +54,7 @@ class ArchiveDialog(MessageBoxBase):
         super().__init__(parent)
         self._item = item
         self.widget.setFixedWidth(580)
+        self.widget.setMaximumHeight(_DIALOG_MAX_HEIGHT)
 
         # 标题行
         title_row = QHBoxLayout()
@@ -44,7 +64,7 @@ class ArchiveDialog(MessageBoxBase):
         close_button.setIcon(colored_icon("x", Color.TEXT_SECONDARY, 16))
         close_button.setFixedSize(24, 24)
         close_button.setStyleSheet(
-            "QToolButton { border: none; border-radius: 4px; }"
+            "QToolButton { border: none; border-radius: 4px; background: transparent; }"
             f"QToolButton:hover {{ background: {Color.DANGER_LIGHT}; }}"
         )
         close_button.clicked.connect(self.reject)
@@ -53,66 +73,81 @@ class ArchiveDialog(MessageBoxBase):
         title_row.addWidget(close_button)
         self.viewLayout.addLayout(title_row)
 
-        # 原始任务信息（只读）
-        self.viewLayout.addWidget(self._build_info_card())
+        # 内容滚动区（§4.4.1：超出最大高度时内部滚动，滚轮可用）
+        scroll = QScrollArea(self.widget)
+        scroll.setWidgetResizable(True)
+        scroll.setFrameShape(QFrame.Shape.NoFrame)
+        scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        scroll.setStyleSheet("QScrollArea { background: transparent; border: none; }")
+        content = QWidget()
+        content_layout = QVBoxLayout(content)
+        content_layout.setContentsMargins(0, 0, 8, 0)
+        content_layout.setSpacing(Space.XS)
+        scroll.setWidget(content)
+        self.viewLayout.addWidget(scroll, 1)
 
-        # 分隔线
+        # ===== 区域顺序严格按 §4.4.2 =====
+
+        # 1. 原始任务信息（只读）
+        content_layout.addWidget(self._build_info_card())
+
+        # 2. 分隔线
         divider = QWidget(self.widget)
         divider.setFixedHeight(1)
         divider.setStyleSheet(f"background: {Color.BG_SECONDARY};")
-        self.viewLayout.addWidget(divider)
+        content_layout.addSpacing(Space.MD)
+        content_layout.addWidget(divider)
+        content_layout.addSpacing(Space.MD)
 
-        # 归档信息 *
+        # 3. 归档信息 *
         section = QLabel("归档信息 *")
         section.setStyleSheet(f"font-size: {FontSize.BODY}px; font-weight: 600;")
-        self.viewLayout.addWidget(section)
+        content_layout.addWidget(section)
 
-        # 代办用时
-        self.viewLayout.addLayout(self._field_label("代办用时（分钟）", required=True))
-        duration_row = QHBoxLayout()
-        duration_row.setSpacing(Space.SM)
-        self.duration_spin = SpinBox(self.widget)
-        self.duration_spin.setRange(1, 100000)
-        self.duration_spin.setValue(30)
-        self.duration_spin.setFixedHeight(44)
+        # 4. 代办用时 *（44px 数字输入 + 时钟图标 + 快捷标签）
+        content_layout.addLayout(self._field_label("代办用时（分钟）", required=True))
+        self.duration_spin = NumberField(
+            value=30, minimum=1, maximum=100000, height=44, icon="clock", parent=self.widget
+        )
         self.duration_spin.valueChanged.connect(self._update_confirm_enabled)
-        duration_row.addWidget(self.duration_spin)
-        duration_row.addStretch(1)
-        self.viewLayout.addLayout(duration_row)
+        content_layout.addWidget(self.duration_spin)
 
         quick_row = QHBoxLayout()
         quick_row.setSpacing(Space.SM)
+        self._duration_pills: list[QPushButton] = []
         for minutes in QUICK_DURATIONS:
             pill = QPushButton(f"{minutes}分钟", self.widget)
             pill.setCheckable(True)
             pill.setStyleSheet(_PILL_QSS)
             pill.clicked.connect(lambda checked=False, m=minutes: self._on_quick_duration(m))
             quick_row.addWidget(pill)
-            self._duration_pills = getattr(self, "_duration_pills", []) + [pill]
+            self._duration_pills.append(pill)
         quick_row.addStretch(1)
-        self.viewLayout.addLayout(quick_row)
+        content_layout.addLayout(quick_row)
 
-        # 质量评分
-        self.viewLayout.addLayout(self._field_label("质量评分", required=True))
+        # 5. 质量评分 *
+        content_layout.addLayout(self._field_label("质量评分", required=True))
         self.rating = RatingWidget(size=28, show_label=True, parent=self.widget)
         self.rating.score_changed.connect(self._update_confirm_enabled)
-        self.viewLayout.addWidget(self.rating, 0, Qt.AlignmentFlag.AlignLeft)
+        content_layout.addWidget(self.rating, 0, Qt.AlignmentFlag.AlignLeft)
 
-        # 总结（可选）
-        self.viewLayout.addLayout(self._field_label("总结（可选）"))
+        # 6. 总结（可选）
+        content_layout.addLayout(self._field_label("总结（可选）"))
         self.summary_edit = TextEdit(self.widget)
         self.summary_edit.setPlaceholderText("这次完成得怎么样？有什么可以复用的经验？")
         self.summary_edit.setFixedHeight(120)
-        self.viewLayout.addWidget(self.summary_edit)
+        content_layout.addWidget(self.summary_edit)
         self.counter_label = QLabel("已输入 0/500 字")
         self.counter_label.setStyleSheet(
             f"color: {Color.TEXT_TERTIARY}; font-size: {FontSize.TINY}px;"
         )
         self.counter_label.setAlignment(Qt.AlignmentFlag.AlignRight)
-        self.viewLayout.addWidget(self.counter_label)
+        content_layout.addWidget(self.counter_label)
         self.summary_edit.textChanged.connect(self._update_counter)
 
-        # 按钮
+        content_layout.addStretch(1)
+
+        # 按钮（§4.4.3：确认按钮绿色、44px 高，必填未齐时禁用）
         self.yesButton.setText("✓ 确认归档")
         self.yesButton.setStyleSheet(
             "QPushButton { background: #10B981; color: #FFFFFF; border: none;"
@@ -130,6 +165,8 @@ class ArchiveDialog(MessageBoxBase):
 
         self._update_counter()
         self._update_confirm_enabled()
+        # §4.4 设计原则：自动聚焦评分区
+        self.rating.setFocus()
 
     # ---------- 区块 ----------
     def _build_info_card(self) -> QWidget:
