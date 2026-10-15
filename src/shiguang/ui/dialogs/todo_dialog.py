@@ -290,8 +290,8 @@ class TodoDialog(MessageBoxBase):
         self.long_term_check = QCheckBox("长期", page)
         self.end_picker = DatePickerButton(page)
         self.end_picker.setDate(QDate.currentDate().addDays(30))
-        # 先连接再勾选，确保默认“长期”状态会把结束日期禁用，
-        # 避免出现“勾着长期但仍可选结束日期”的错位。
+        # 结束日期始终可点；勾选“长期”时只把文案置为“长期”，提交时忽略该值。
+        self.end_picker.dateChanged.connect(self._on_end_date_changed)
         self.long_term_check.toggled.connect(self._on_long_term_toggled)
         self.long_term_check.setChecked(True)
         layout.addWidget(self.start_picker)
@@ -379,7 +379,14 @@ class TodoDialog(MessageBoxBase):
             self.expand_stack.setCurrentIndex(3)
 
     def _on_long_term_toggled(self, checked: bool) -> None:
-        self.end_picker.setEnabled(not checked)
+        if checked:
+            self.end_picker.setText("长期")
+        else:
+            self.end_picker.setDate(self.end_picker.getDate())
+
+    def _on_end_date_changed(self, _value: QDate) -> None:
+        if self.long_term_check.isChecked():
+            self.long_term_check.setChecked(False)
 
     def _prefill_repeat(self, item: TodoItem) -> None:
         index = self.repeat_combo.findData(item.repeat)
