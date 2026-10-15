@@ -275,6 +275,7 @@ class TodoDialog(MessageBoxBase):
         layout.setContentsMargins(0, 0, 0, 0)
         self.date_picker = CalendarPicker(page)
         self.date_picker.setDate(QDate.currentDate())
+        self.date_picker.setFixedHeight(40)
         layout.addWidget(self.date_picker)
         layout.addStretch(1)
         return page
@@ -286,11 +287,15 @@ class TodoDialog(MessageBoxBase):
         layout.setSpacing(Space.SM)
         self.start_picker = CalendarPicker(page)
         self.start_picker.setDate(QDate.currentDate())
+        self.start_picker.setFixedHeight(40)
         self.long_term_check = QCheckBox("长期", page)
-        self.long_term_check.setChecked(True)
-        self.long_term_check.toggled.connect(self._on_long_term_toggled)
         self.end_picker = CalendarPicker(page)
         self.end_picker.setDate(QDate.currentDate().addDays(30))
+        self.end_picker.setFixedHeight(40)
+        # 先连接再勾选，确保默认“长期”状态会把结束日期禁用，
+        # 避免出现“勾着长期但仍可选结束日期”的错位。
+        self.long_term_check.toggled.connect(self._on_long_term_toggled)
+        self.long_term_check.setChecked(True)
         layout.addWidget(self.start_picker)
         layout.addWidget(self.long_term_check)
         layout.addWidget(self.end_picker)
@@ -381,7 +386,9 @@ class TodoDialog(MessageBoxBase):
     def _prefill_repeat(self, item: TodoItem) -> None:
         index = self.repeat_combo.findData(item.repeat)
         self.repeat_combo.setCurrentIndex(index)
-        if item.repeat == REPEAT_DAILY and item.date:
+        if item.repeat == REPEAT_NONE and item.date:
+            self.date_picker.setDate(QDate(item.date.year, item.date.month, item.date.day))
+        elif item.repeat == REPEAT_DAILY and item.date:
             self.start_picker.setDate(QDate(item.date.year, item.date.month, item.date.day))
             if item.end_date:
                 self.long_term_check.setChecked(False)
