@@ -8,7 +8,6 @@ from datetime import date, timedelta
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
     QButtonGroup,
-    QComboBox,
     QFrame,
     QHBoxLayout,
     QLabel,
@@ -23,6 +22,7 @@ from shiguang.services import get_task_service
 from shiguang.services.dto import TodoItem
 from shiguang.ui.theme import Color, FontSize, Radius, Space, set_container_bg
 from shiguang.ui.widgets.buttons import primary_button
+from shiguang.ui.widgets.form_fields import ChevronComboBox
 from shiguang.ui.widgets.task_card import TaskCard
 
 TAB_LABELS = ["今日", "待办", "逾期", "已归档"]
@@ -109,13 +109,14 @@ class TodoPage(QWidget):
 
         row.addStretch(1)
 
-        self.date_filter = QComboBox(bar)
+        self.date_filter = ChevronComboBox(bar)
         for label in DATE_FILTERS:
             self.date_filter.addItem(label)
-        self.date_filter.setFixedHeight(36)
+        self.date_filter.setFixedHeight(40)
         self.date_filter.setStyleSheet(
             f"QComboBox {{ background: {Color.SURFACE}; border: 1px solid {Color.BG_SECONDARY};"
-            f" border-radius: 8px; padding: 6px 12px; font-size: {FontSize.BODY}px; }}"
+            f" border-radius: 8px; padding: 8px 12px; font-size: {FontSize.BODY}px; }}"
+            + ChevronComboBox.arrow_qss()
         )
         self.date_filter.currentIndexChanged.connect(self.refresh)
         row.addWidget(self.date_filter)
