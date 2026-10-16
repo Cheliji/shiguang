@@ -147,6 +147,9 @@ class AutoGrowTextEdit(TextEdit):
         self, min_lines: int = 3, max_lines: int | None = None, parent: QWidget | None = None
     ) -> None:
         super().__init__(parent)
+        # 隐藏 qfluentwidgets 的 EditLayer 焦点条：它是直角矩形子控件，绘制在控件底部
+        # 且越过圆角边框，呈现为底边下一排断点状色块（失焦即消失，截图时看不到）
+        self.layer.hide()
         self._min_lines = min_lines
         self._max_lines = max_lines
         if max_lines is None:

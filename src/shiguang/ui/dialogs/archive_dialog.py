@@ -32,6 +32,21 @@ from shiguang.ui.widgets.rating_widget import RatingWidget
 QUICK_DURATIONS = [15, 30, 45, 60, 90]
 SUMMARY_LIMIT = 500
 
+# 总结输入框与新建代办弹窗保持同一套输入框样式（圆角边框 + 主色焦点边框），
+# 否则 fluent 默认样式底边为深色边（rgba(0,0,0,100)），视觉上像一排黑点
+_FIELD_QSS = f"""
+TextEdit {{
+    background: {Color.SURFACE};
+    border: 1px solid {Color.BG_SECONDARY};
+    border-radius: 8px;
+    padding: 8px 12px;
+    font-size: {FontSize.BODY}px;
+}}
+TextEdit:focus {{
+    border: 1px solid {Color.PRIMARY};
+}}
+"""
+
 _PILL_QSS = f"""
 QPushButton {{
     background: {Color.SURFACE}; color: {Color.TEXT_SECONDARY};
@@ -144,6 +159,7 @@ class ArchiveDialog(MessageBoxBase):
         content_layout.addLayout(self._field_label("总结（可选）"))
         self.summary_edit = AutoGrowTextEdit(min_lines=4, max_lines=8, parent=self.widget)
         self.summary_edit.setPlaceholderText("这次完成得怎么样？有什么可以复用的经验？")
+        self.summary_edit.setStyleSheet(_FIELD_QSS)
         content_layout.addWidget(self.summary_edit)
         self.counter_label = QLabel("已输入 0/500 字")
         self.counter_label.setStyleSheet(
