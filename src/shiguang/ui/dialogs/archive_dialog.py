@@ -12,11 +12,9 @@
 
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
-    QFrame,
     QHBoxLayout,
     QLabel,
     QPushButton,
-    QScrollArea,
     QToolButton,
     QVBoxLayout,
     QWidget,
@@ -26,7 +24,7 @@ from qfluentwidgets import MessageBoxBase
 from shiguang.services.dto import ArchiveInput, TodoItem
 from shiguang.ui.icons import colored_icon
 from shiguang.ui.theme import Color, FontSize, Radius, Space, set_container_bg
-from shiguang.ui.widgets.form_fields import AutoGrowTextEdit, NumberField
+from shiguang.ui.widgets.form_fields import AutoGrowTextEdit, DialogScrollArea, NumberField
 from shiguang.ui.widgets.rating_widget import RatingWidget
 
 QUICK_DURATIONS = [15, 30, 45, 60, 90]
@@ -96,13 +94,7 @@ class ArchiveDialog(MessageBoxBase):
         self.viewLayout.addLayout(title_row)
 
         # 内容滚动区（§4.4.1：超出最大高度时内部滚动，滚轮可用）
-        scroll = QScrollArea(self.widget)
-        scroll.setWidgetResizable(True)
-        scroll.setFrameShape(QFrame.Shape.NoFrame)
-        scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
-        scroll.setStyleSheet("QScrollArea { background: transparent; border: none; }")
-        # 视口默认灰底，置透明让弹窗主体的白色透出
-        scroll.viewport().setStyleSheet("background: transparent;")
+        scroll = DialogScrollArea(self.widget)
         content = QWidget()
         content_layout = QVBoxLayout(content)
         content_layout.setContentsMargins(0, 0, 8, 0)

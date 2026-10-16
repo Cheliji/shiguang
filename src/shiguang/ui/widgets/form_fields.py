@@ -11,7 +11,7 @@
 
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtGui import QIntValidator
-from PySide6.QtWidgets import QComboBox, QHBoxLayout, QLabel, QWidget
+from PySide6.QtWidgets import QComboBox, QFrame, QHBoxLayout, QLabel, QScrollArea, QWidget
 from qfluentwidgets import LineEdit, TextEdit
 
 from shiguang.ui.icons import colored_pixmap
@@ -43,6 +43,35 @@ QComboBox {
     padding-right: 32px;
 }
 """
+
+
+class DialogScrollArea(QScrollArea):
+    """弹窗表单滚动区。
+
+    qfluentwidgets 的 MaskDialogBase 会给弹窗主体挂 QGraphicsDropShadowEffect。
+    滚动时 QAbstractScrollArea 默认的 blit（块拷贝）优化会让阴影效果的缓存
+    pixmap 出现 1~2px 未更新条带，透出底层窗口内容（表现为弹窗上一条杂色
+    像素带，重绘/截图后消失）。因此滚动时改为整幅重绘视口，禁用 blit 优化。
+    """
+
+    def __init__(self, parent: QWidget | None = None) -> None:
+        super().__init__(parent)
+        self.setWidgetResizable(True)
+        self.setFrameShape(QFrame.Shape.NoFrame)
+        self.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        self.setStyleSheet("QScrollArea { background: transparent; border: none; }")
+        # 视口默认灰底，置透明让弹窗主体的白色透出
+        self.viewport().setStyleSheet("background: transparent;")
+
+    def scrollContentsBy(self, dx: int, dy: int) -> None:
+        super().scrollContentsBy(dx, dy)
+        # qfluentwidgets 的 MaskDialogBase 给弹窗主体挂了 QGraphicsDropShadowEffect，
+        # 上面的 blit 块拷贝会让效果缓存出现 1~2px 未更新条带（透出底层内容，
+        # 表现为一排杂色像素，重绘/截图后消失）。滚动后触发整个弹窗层重绘以刷新缓存。
+        top = self
+        while top.parentWidget() is not None:
+            top = top.parentWidget()
+        top.update()
 
 
 class NumberField(QWidget):

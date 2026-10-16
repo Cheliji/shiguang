@@ -16,13 +16,11 @@ from datetime import date
 from PySide6.QtCore import QDate, QEasingCurve, QPropertyAnimation, Qt
 from PySide6.QtWidgets import (
     QButtonGroup,
-    QFrame,
     QGridLayout,
     QHBoxLayout,
     QLabel,
     QPushButton,
     QRadioButton,
-    QScrollArea,
     QStackedWidget,
     QToolButton,
     QVBoxLayout,
@@ -41,7 +39,7 @@ from shiguang.services.dto import (
 from shiguang.ui.icons import colored_icon
 from shiguang.ui.theme import Color, FontSize, Space
 from shiguang.ui.widgets.date_picker import DatePickerButton
-from shiguang.ui.widgets.form_fields import AutoGrowTextEdit, ChevronComboBox
+from shiguang.ui.widgets.form_fields import AutoGrowTextEdit, ChevronComboBox, DialogScrollArea
 
 _FIELD_QSS = f"""
 LineEdit, TextEdit, QComboBox {{
@@ -131,13 +129,7 @@ class TodoDialog(MessageBoxBase):
         self.viewLayout.addLayout(title_row)
 
         # 表单滚动区（§4.3.1：超出最大高度时内部滚动，滚轮可用）
-        scroll = QScrollArea(self.widget)
-        scroll.setWidgetResizable(True)
-        scroll.setFrameShape(QFrame.Shape.NoFrame)
-        scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
-        scroll.setStyleSheet("QScrollArea { background: transparent; border: none; }")
-        # 视口默认灰底，置透明让弹窗主体的白色透出
-        scroll.viewport().setStyleSheet("background: transparent;")
+        scroll = DialogScrollArea(self.widget)
         form = QWidget()
         form_layout = QVBoxLayout(form)
         form_layout.setContentsMargins(0, 0, 8, 0)
