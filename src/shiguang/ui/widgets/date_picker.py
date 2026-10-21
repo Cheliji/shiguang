@@ -6,7 +6,8 @@
   年份随跨年自动变化，年/月不可输入；
 - 禁止鼠标滚轮操作：忽略所有 wheel 事件；
 - 当月日期背景为白色，非当月日期显示为灰色；
-- 打开时默认定位到当月，今日用主题色圆形凸显。
+- 默认选中当日（主题色圆形凸显）；选中其他日期后当日恢复纯白，
+  全弹窗始终只有选中日期一个高亮，切换月份不残留。
 """
 
 from PySide6.QtCore import QDate, QPoint, QRectF, Qt, Signal
@@ -70,33 +71,33 @@ QToolButton#calPrev:pressed, QToolButton#calNext:pressed {{
     color: {Color.TEXT_SECONDARY};
     font-size: {FontSize.TINY}px;
 }}
-QPushButton[calDay="true"] {{
-    background: {Color.SURFACE};
-    color: {Color.TEXT_PRIMARY};
-    border: none;
-    border-radius: 16px;
-    font-size: {FontSize.AUXILIARY}px;
-}}
-QPushButton[calDay="true"]:hover {{
-    background: {Color.PRIMARY_LIGHT};
-    color: {Color.PRIMARY};
-}}
-QPushButton[calDay="true"][outside="true"], QPushButton[calDay="true"][outside="true"]:hover {{
-    background: {Color.SURFACE};
-    color: {Color.TEXT_TERTIARY};
-}}
-QPushButton[calDay="true"][today="true"], QPushButton[calDay="true"][today="true"]:hover {{
-    background: {Color.PRIMARY};
-    color: #FFFFFF;
-    font-weight: 600;
-}}
-QPushButton[calDay="true"][selected="true"] {{
-    background: {Color.PRIMARY_LIGHT};
-    color: {Color.PRIMARY};
-    border: 1px solid {Color.PRIMARY};
-    font-weight: 600;
-}}
 """
+
+
+def _day_qss(active: bool, outside: bool) -> str:
+    """单个日期格样式：每次刷新整块替换，不依赖动态属性，旧样式不会残留。
+
+    全弹窗只有一个高亮——当前选中日期（实心主题色圆 + 白字）；
+    进入时默认选中当日，选中其他日期后当日立即恢复纯白。
+    """
+    base = (
+        "QPushButton { border: none;"
+        f" border-radius: {_CELL_SIZE // 2}px;"
+        f" font-size: {FontSize.AUXILIARY}px;"
+    )
+    if active:
+        # 选中日：主题色实心圆（与刚进入时的当日高亮完全一致）
+        return base + f" background: {Color.PRIMARY}; color: #FFFFFF; font-weight: 600; }}"
+    if outside:
+        # 非当月：白底 + 灰色文字，无悬停反馈
+        return base + f" background: {Color.SURFACE}; color: {Color.TEXT_TERTIARY}; }}"
+    # 当月普通日：白底黑字，悬停淡主题色提示
+    return (
+        base
+        + f" background: {Color.SURFACE}; color: {Color.TEXT_PRIMARY}; }}"
+        f" QPushButton:hover {{ background: {Color.PRIMARY_LIGHT};"
+        f" color: {Color.PRIMARY}; }}"
+    )
 
 
 class _CalendarCard(QFrame):
@@ -176,7 +177,6 @@ class CalendarPopup(QWidget):
         for index in range(42):
             row, col = divmod(index + 7, 7)
             button = QPushButton(self._card)
-            button.setProperty("calDay", True)
             button.setFlat(True)
             button.setFixedSize(_CELL_SIZE, _CELL_SIZE)
             button.setCursor(Qt.CursorShape.PointingHandCursor)
@@ -224,11 +224,9 @@ class CalendarPopup(QWidget):
 
     # ---------- 状态 ----------
     def reset(self, initial: QDate | None = None) -> None:
-        """打开弹窗时初始化：无预设日期则定位当月（今日凸显），否则定位预设日期所在月。"""
-        today = QDate.currentDate()
-        anchor = QDate(initial) if initial is not None else today
-        self._selected = QDate(initial) if initial is not None else None
-        self._month = QDate(anchor.year(), anchor.month(), 1)
+        """打开弹窗时初始化：默认选中当日（凸显）；有预设日期则选中预设日期。"""
+        self._selected = QDate(initial) if initial is not None else QDate.currentDate()
+        self._month = QDate(self._selected.year(), self._selected.month(), 1)
         self._refresh()
 
     def _navigate(self, step: int) -> None:
@@ -238,20 +236,17 @@ class CalendarPopup(QWidget):
 
     def _refresh(self) -> None:
         self._title_label.setText(f"{self._month.year()}年 {self._month.month()}月")
-        today = QDate.currentDate()
         # 周一起始：dayOfWeek() 周一=1 … 周日=7 → 列索引 = dayOfWeek()-1
         lead = self._month.dayOfWeek() - 1
         start = self._month.addDays(-lead)
         for index, button in enumerate(self._day_buttons):
             day = start.addDays(index)
-            is_today = day == today
+            # 全弹窗唯一高亮：当前选中日期；选中其他日期后当日即恢复纯白
+            active = self._selected is not None and day == self._selected
+            outside = day.month() != self._month.month()
             button.setText(str(day.day()))
-            button.setProperty("outside", day.month() != self._month.month())
-            button.setProperty("today", is_today)
-            button.setProperty("selected", self._selected is not None and day == self._selected)
+            button.setStyleSheet(_day_qss(active, outside))
             button._date = day  # noqa: SLF001 — 弹窗内部数据载体
-            button.style().unpolish(button)
-            button.style().polish(button)
 
     # ---------- 交互 ----------
     def _on_day_clicked(self, button: QPushButton) -> None:
@@ -259,6 +254,7 @@ class CalendarPopup(QWidget):
         if day is None:
             return
         self._selected = QDate(day)
+        self._refresh()  # 先刷新：选中其他日期后，原高亮（含当日）立即恢复纯白
         self.dateSelected.emit(self._selected)
         self.close()
 

@@ -2,6 +2,7 @@
 
 from PySide6.QtCore import QDate, Qt
 
+from shiguang.ui.theme import Color
 from shiguang.ui.widgets.date_picker import CalendarPopup, DatePickerButton
 
 
@@ -15,17 +16,58 @@ class _FakeWheelEvent:
         self.ignored = True
 
 
-def test_popup_defaults_to_current_month_with_today_highlighted(qtbot):
+def _active_button(popup: CalendarPopup):
+    """返回当前唯一高亮（实心主题色圆）的日期格。"""
+    return next(b for b in popup._day_buttons if f"background: {Color.PRIMARY};" in b.styleSheet())
+
+
+def test_popup_defaults_to_today_highlighted(qtbot):
     popup = CalendarPopup()
     qtbot.addWidget(popup)
     today = QDate.currentDate()
 
     popup.reset(None)
 
+    assert popup._selected == today
     assert popup._title_label.text() == f"{today.year()}年 {today.month()}月"
-    today_button = next(b for b in popup._day_buttons if b.property("today"))
-    assert today_button.text() == str(today.day())
-    assert not today_button.property("outside")
+    active = _active_button(popup)
+    assert active.text() == str(today.day())
+
+
+def test_selecting_other_date_turns_today_plain_white(qtbot):
+    popup = CalendarPopup()
+    qtbot.addWidget(popup)
+    today = QDate.currentDate()
+    popup.reset(None)
+
+    other = today.addDays(1) if today.day() < today.daysInMonth() else today.addDays(-1)
+    popup._selected = other
+    popup._refresh()
+
+    # 当日恢复普通白底样式
+    today_button = next(b for b in popup._day_buttons if b._date == today)
+    assert f"background: {Color.SURFACE};" in today_button.styleSheet()
+    assert f"background: {Color.PRIMARY};" not in today_button.styleSheet()
+    # 唯一高亮是新选日期，且样式与进入时的当日高亮完全一致
+    active = _active_button(popup)
+    assert active.text() == str(other.day())
+
+
+def test_no_highlight_residue_after_month_switch(qtbot):
+    popup = CalendarPopup()
+    qtbot.addWidget(popup)
+    today = QDate.currentDate()
+    popup.reset(None)
+    assert _active_button(popup).text() == str(today.day())
+
+    popup._navigate(1)  # 切到下个月
+
+    # 选中日期不在本月 → 整月无高亮，今日原位置也不残留任何颜色
+    assert not any(
+        f"background: {Color.PRIMARY};" in b.styleSheet() for b in popup._day_buttons
+    )
+    popup._navigate(-1)  # 切回当月
+    assert _active_button(popup).text() == str(today.day())
 
 
 def test_navigate_by_month_rolls_year(qtbot):
@@ -53,11 +95,11 @@ def test_outside_days_are_grayed(qtbot):
     today = QDate.currentDate()
 
     popup.reset(None)
-    outside = [b for b in popup._day_buttons if b.property("outside")]
+    outside = [b for b in popup._day_buttons if f"color: {Color.TEXT_TERTIARY};" in b.styleSheet()]
     # 6 行固定网格：补位数 = 42 - 当月天数
     assert len(outside) == 42 - today.daysInMonth()
     for button in outside:
-        assert not button.property("today")
+        assert f"background: {Color.PRIMARY};" not in button.styleSheet()
 
 
 def test_reset_with_initial_date_selects_it(qtbot):
@@ -69,8 +111,7 @@ def test_reset_with_initial_date_selects_it(qtbot):
 
     assert popup._month == QDate(2030, 5, 1)
     assert popup._selected == target
-    selected = next(b for b in popup._day_buttons if b.property("selected"))
-    assert selected.text() == "20"
+    assert _active_button(popup).text() == "20"
 
 
 def test_day_click_emits_and_closes(qtbot):
