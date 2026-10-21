@@ -9,9 +9,11 @@
 - 打开时默认定位到当月，今日用主题色圆形凸显。
 """
 
-from PySide6.QtCore import QDate, QPoint, Qt, Signal
+from PySide6.QtCore import QDate, QPoint, QRectF, Qt, Signal
+from PySide6.QtGui import QColor, QPainter, QPen
 from PySide6.QtWidgets import (
     QFrame,
+    QGraphicsDropShadowEffect,
     QGridLayout,
     QHBoxLayout,
     QLabel,
@@ -22,7 +24,7 @@ from PySide6.QtWidgets import (
 )
 
 from shiguang.ui.icons import colored_icon
-from shiguang.ui.theme import Color, FontSize, Space
+from shiguang.ui.theme import Color, FontSize, Radius, Space
 
 _BUTTON_QSS = f"""
 QToolButton {{
@@ -44,17 +46,8 @@ QToolButton[placeholder="true"] {{
 # 周一为一周之首（与代办表单 WEEKDAY_NAMES 约定一致）
 _WEEKDAY_HEADERS = ["一", "二", "三", "四", "五", "六", "日"]
 _CELL_SIZE = 36
+_HEADER_HEIGHT = 48
 _POPUP_QSS = f"""
-#calContainer {{
-    background: {Color.SURFACE};
-    border: 1px solid {Color.BG_SECONDARY};
-    border-radius: 12px;
-}}
-#calHeader {{
-    background: {Color.PRIMARY};
-    border-top-left-radius: 11px;
-    border-top-right-radius: 11px;
-}}
 #calTitle {{
     background: transparent;
     color: #FFFFFF;
@@ -106,6 +99,36 @@ QPushButton[calDay="true"][selected="true"] {{
 """
 
 
+class _CalendarCard(QFrame):
+    """日历卡片：白色圆角底 + 主题色头部，用 QPainter 手绘。
+
+    QSS 的 border-radius 在顶层弹窗边缘容易残留直角底色（窗口矩形背景
+    未被裁剪），手绘抗锯齿圆角可彻底避免该问题。
+    """
+
+    def __init__(self, parent: QWidget | None = None) -> None:
+        super().__init__(parent)
+        # 关闭 QFrame 默认绘制，背景完全由 paintEvent 接管
+        self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, False)
+
+    def paintEvent(self, event) -> None:  # noqa: N802 — Qt 命名
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+        rect = QRectF(self.rect())
+
+        # 1) 白色圆角底 + 1px 描边（向内收缩 0.5px 避免描边被裁切）
+        painter.setPen(QPen(QColor(Color.BG_SECONDARY), 1))
+        painter.setBrush(QColor(Color.SURFACE))
+        painter.drawRoundedRect(rect.adjusted(0.5, 0.5, -0.5, -0.5), Radius.LG, Radius.LG)
+
+        # 2) 主题色头部：仅顶部两角圆角（先画全圆角矩形，再用矩形盖住底部圆角）
+        header = QRectF(rect.left(), rect.top(), rect.width(), _HEADER_HEIGHT)
+        painter.setPen(Qt.PenStyle.NoPen)
+        painter.setBrush(QColor(Color.PRIMARY))
+        painter.drawRoundedRect(header, Radius.LG, Radius.LG)
+        painter.drawRect(QRectF(header.left(), header.top() + Radius.LG, header.width(), Radius.LG))
+
+
 class CalendarPopup(QWidget):
     """自绘日历弹窗：主题色头部 + 白色日期网格，仅供 DatePickerButton 使用。"""
 
@@ -122,20 +145,26 @@ class CalendarPopup(QWidget):
         self._selected: QDate | None = None
         self._day_buttons: list[QPushButton] = []
 
+        # 外层留白给投影，卡片手绘圆角 + 阴影彻底消除直角残留
         outer = QVBoxLayout(self)
-        outer.setContentsMargins(0, 0, 0, 0)
-        container = QFrame(self)
-        container.setObjectName("calContainer")
-        outer.addWidget(container)
+        outer.setContentsMargins(Space.SM + 2, Space.SM, Space.SM + 2, Space.SM + 6)
+        self._card = _CalendarCard(self)
+        outer.addWidget(self._card)
 
-        layout = QVBoxLayout(container)
-        layout.setContentsMargins(Space.SM, 0, Space.SM, Space.SM)
+        shadow = QGraphicsDropShadowEffect(self)
+        shadow.setBlurRadius(20)
+        shadow.setOffset(0, 4)
+        shadow.setColor(QColor(0, 0, 0, 26))  # ≈ rgba(0,0,0,0.10)
+        self._card.setGraphicsEffect(shadow)
+
+        layout = QVBoxLayout(self._card)
+        layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(0)
         layout.addWidget(self._build_header())
 
         # 星期表头 + 6×7 日期网格（固定 6 行，保证不同月份高度一致）
         grid = QGridLayout()
-        grid.setContentsMargins(Space.XS, Space.XS, Space.XS, 0)
+        grid.setContentsMargins(Space.SM, Space.SM, Space.SM, Space.SM)
         grid.setHorizontalSpacing(4)
         grid.setVerticalSpacing(4)
         for col, name in enumerate(_WEEKDAY_HEADERS):
@@ -146,7 +175,7 @@ class CalendarPopup(QWidget):
             grid.addWidget(label, 0, col)
         for index in range(42):
             row, col = divmod(index + 7, 7)
-            button = QPushButton(container)
+            button = QPushButton(self._card)
             button.setProperty("calDay", True)
             button.setFlat(True)
             button.setFixedSize(_CELL_SIZE, _CELL_SIZE)
@@ -159,11 +188,13 @@ class CalendarPopup(QWidget):
 
     # ---------- 结构 ----------
     def _build_header(self) -> QFrame:
-        """主题色头部：左上 < 右上 > 矢量按钮，中间只读年月文本。"""
-        header = QFrame(self)
-        header.setObjectName("calHeader")
+        """头部内容层（透明容器，主题色背景由 _CalendarCard 手绘）：
+        左上 < 右上 > 矢量按钮，中间只读年月文本。"""
+        header = QFrame(self._card)
+        header.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, False)
+        header.setFixedHeight(_HEADER_HEIGHT)
         row = QHBoxLayout(header)
-        row.setContentsMargins(Space.XS, Space.XS, Space.XS, Space.XS)
+        row.setContentsMargins(Space.SM, Space.SM, Space.SM, Space.SM)
         row.setSpacing(0)
 
         self._prev_button = QToolButton(header)
