@@ -13,11 +13,20 @@
 - 当月日期白色背景、非当月日期灰色；
 - 默认选中当日并以主题色实心圆凸显；选中其他日期后当日立即恢复纯白，
   全弹窗始终只有「选中日期」一个高亮，且与进入时的当日高亮样式完全一致。
+
+窗口层面（避免「圆角外一圈直角边框」）：
+- 无边框 + WA_TranslucentBackground 透明窗口，且用圆角 QRegion 做窗口 mask，
+  窗口物理上只有圆角形状，圆角以外不存在任何像素（不会出现直角边框）；
+- 不画窗口投影：投影是沿窗口矩形的直角阴影，会形成一圈方形边框感；
+- 显式加 Qt.NoDropShadowWindowHint：Windows 会给 Popup 类窗口加
+  CS_DROPSHADOW，同样是直角系统阴影，必须禁用；
+- 弹窗自身样式强制 background: transparent，避免全局 QSS 填出直角底色。
 """
 
 from PySide6.QtCore import QDate, QEvent, QPoint, QRectF, Qt, Signal
-from PySide6.QtGui import QColor, QFont, QPainter, QPainterPath, QPen
+from PySide6.QtGui import QColor, QFont, QPainter, QPainterPath, QPen, QRegion
 from PySide6.QtWidgets import QApplication, QPushButton, QToolButton, QWidget
+from shiboken6 import isValid
 
 from shiguang.ui.icons import colored_icon
 from shiguang.ui.theme import Color, FontSize, Radius, Space
@@ -42,6 +51,9 @@ QToolButton[placeholder="true"] {{
 # 命中区按钮：完全透明，只负责点击与悬停事件，视觉全部由弹窗自绘
 _HIT_QSS = "background: transparent; border: none;"
 
+# 弹窗自身背景强制透明：避免全局样式表（QStyleSheetStyle）给顶层窗口填出直角底色
+_POPUP_QSS = "CalendarPopup { background: transparent; border: none; }"
+
 # 布局常量（周一起始，与代办表单 WEEKDAY_NAMES 约定一致）
 _WEEKDAY_HEADERS = ["一", "二", "三", "四", "五", "六", "日"]
 _CELL = 36
@@ -49,8 +61,6 @@ _GAP = 4
 _PAD = 12
 _HEADER_HEIGHT = 48
 _WEEKDAY_HEIGHT = 22
-_SHADOW_MARGIN = 12  # 左右+上留白（绘制柔和投影）
-_SHADOW_BOTTOM = 18  # 下方留白略大，投影自然下落
 
 _CARD_WIDTH = _PAD * 2 + 7 * _CELL + 6 * _GAP
 _CARD_HEIGHT = _HEADER_HEIGHT + 8 + _WEEKDAY_HEIGHT + 8 + 6 * _CELL + 5 * _GAP + _PAD
@@ -66,13 +76,23 @@ class CalendarPopup(QWidget):
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
         # 顶层独立窗口：不继承对话框（qfluentwidgets MessageBoxBase）的样式表，
-        # 避免外部 QSS（如 QLabel{color:black}）干扰日历配色
-        self.setWindowFlags(Qt.WindowType.Popup | Qt.WindowType.FramelessWindowHint)
+        # 避免外部 QSS（如 QLabel{color:black}）干扰日历配色。
+        # NoDropShadowWindowHint：Windows 会给 Popup 窗口加 CS_DROPSHADOW，
+        # 那是【直角矩形】系统投影，会围着圆角卡片露出一圈方形边框，必须关掉。
+        self.setWindowFlags(
+            Qt.WindowType.Popup
+            | Qt.WindowType.FramelessWindowHint
+            | Qt.WindowType.NoDropShadowWindowHint
+        )
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
         self.setAttribute(Qt.WidgetAttribute.WA_NoSystemBackground)
-        self.setFixedSize(
-            _CARD_WIDTH + _SHADOW_MARGIN * 2, _CARD_HEIGHT + _SHADOW_MARGIN + _SHADOW_BOTTOM
-        )
+        self.setAutoFillBackground(False)
+        self.setStyleSheet(_POPUP_QSS)
+        # 窗口尺寸 = 卡片尺寸：不留任何矩形留白，避免圆角外出现直角区域
+        self.setFixedSize(_CARD_WIDTH, _CARD_HEIGHT)
+        # 圆角窗口形状：用 mask 把窗口物理裁剪成圆角矩形，
+        # 即使系统/样式表在窗口矩形上绘制任何东西，圆角外也不会存在像素
+        self._apply_rounded_mask()
         self.setCursor(Qt.CursorShape.PointingHandCursor)
 
         self._month = QDate(QDate.currentDate().year(), QDate.currentDate().month(), 1)
@@ -137,12 +157,10 @@ class CalendarPopup(QWidget):
         self.update()  # 整体重绘：不依赖增量刷新，旧高亮不可能残留
 
     def _layout_children(self) -> None:
-        card_x = _SHADOW_MARGIN
-        card_y = _SHADOW_MARGIN
-        self._prev_button.move(card_x + _PAD - 4, card_y + 8)
-        self._next_button.move(card_x + _CARD_WIDTH - _PAD - 28, card_y + 8)
-        grid_x = card_x + _PAD
-        grid_y = card_y + _GRID_TOP
+        self._prev_button.move(_PAD - 4, 8)
+        self._next_button.move(_CARD_WIDTH - _PAD - 28, 8)
+        grid_x = _PAD
+        grid_y = _GRID_TOP
         for index, button in enumerate(self._day_buttons):
             row, col = divmod(index, 7)
             button.move(grid_x + col * (_CELL + _GAP), grid_y + row * (_CELL + _GAP))
@@ -151,12 +169,26 @@ class CalendarPopup(QWidget):
         return f"{self._month.year()}年 {self._month.month()}月"
 
     # ---------- 绘制 ----------
+    def _card_path(self, card: QRectF) -> QPainterPath:
+        path = QPainterPath()
+        path.addRoundedRect(card, Radius.LG, Radius.LG)
+        return path
+
+    def _apply_rounded_mask(self) -> None:
+        """把窗口裁剪成圆角矩形：圆角外不留任何像素，从物理上消除直角边框。"""
+        card = QRectF(0, 0, self.width(), self.height())
+        self.setMask(QRegion(self._card_path(card).toFillPolygon().toPolygon()))
+
+    def resizeEvent(self, event) -> None:  # noqa: N802 — Qt 命名
+        """尺寸/DPI 变化时重算圆角 mask。"""
+        super().resizeEvent(event)
+        self._apply_rounded_mask()
+
     def paintEvent(self, event) -> None:  # noqa: N802 — Qt 命名
         painter = QPainter(self)
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
-        card = QRectF(_SHADOW_MARGIN, _SHADOW_MARGIN, _CARD_WIDTH, _CARD_HEIGHT)
+        card = QRectF(0, 0, _CARD_WIDTH, _CARD_HEIGHT)
 
-        self._paint_shadow(painter, card)
         self._paint_card(painter, card)
 
         painter.save()
@@ -165,26 +197,6 @@ class CalendarPopup(QWidget):
         self._paint_weekdays(painter, card)
         self._paint_days(painter)
         painter.restore()
-
-    @staticmethod
-    def _card_path(card: QRectF) -> QPainterPath:
-        path = QPainterPath()
-        path.addRoundedRect(card, Radius.LG, Radius.LG)
-        return path
-
-    @staticmethod
-    def _paint_shadow(painter: QPainter, card: QRectF) -> None:
-        """手绘柔和投影：多层低透明度圆角矩形，静态绘制、无特效缓存。"""
-        painter.setPen(Qt.PenStyle.NoPen)
-        for step in range(6, 0, -1):
-            painter.setBrush(QColor(0, 0, 0, 4))
-            offset = step * 1.2
-            shadow_rect = card.adjusted(
-                -offset + 1, -offset + 2, offset - 1, offset
-            )
-            painter.drawRoundedRect(
-                shadow_rect, Radius.LG + 4, Radius.LG + 4
-            )
 
     @staticmethod
     def _paint_card(painter: QPainter, card: QRectF) -> None:
@@ -264,6 +276,9 @@ class CalendarPopup(QWidget):
     # ---------- 交互 ----------
     def eventFilter(self, obj, event) -> bool:  # noqa: N802 — Qt 命名
         """日期格悬停反馈：进入/离开时更新悬停日期并整体重绘。"""
+        # 窗口销毁过程中 C++ 对象可能已被销毁，此时直接放行
+        if not isValid(self):
+            return False
         if isinstance(obj, QPushButton) and getattr(obj, "_date", None) is not None:
             if event.type() == QEvent.Type.Enter:
                 self._hover = obj._date  # noqa: SLF001
@@ -343,12 +358,13 @@ class DatePickerButton(QToolButton):
         self.style().polish(self)
 
     def _show_calendar(self) -> None:
-        if self._popup is None:
+        if self._popup is None or not isValid(self._popup):
             self._popup = CalendarPopup()  # 顶层独立窗口：不继承对话框样式表
+            self._popup.destroyed.connect(self._on_popup_destroyed)
             self._popup.dateSelected.connect(self._on_date_selected)
             app = QApplication.instance()
             if app is not None:
-                app.aboutToQuit.connect(self._popup.close)
+                app.aboutToQuit.connect(self._on_app_about_to_quit)
         # 无预设日期时默认选中当日（主题色凸显）
         self._popup.reset(self._date)
         self._popup.move(self.mapToGlobal(QPoint(0, self.height() + Space.XS)))
@@ -356,9 +372,17 @@ class DatePickerButton(QToolButton):
         self._popup.raise_()
         self._popup.activateWindow()
 
+    def _on_app_about_to_quit(self) -> None:
+        if self._popup is not None and isValid(self._popup):
+            self._popup.close()
+
+    def _on_popup_destroyed(self) -> None:
+        """弹窗 C++ 对象销毁后清除 Python 引用，避免后续调用崩溃。"""
+        self._popup = None
+
     def hideEvent(self, event) -> None:  # noqa: N802 — Qt 命名
         """宿主对话框关闭/隐藏时一并收起日历弹窗，避免残留无主窗口。"""
-        if self._popup is not None:
+        if self._popup is not None and isValid(self._popup):
             self._popup.close()
         super().hideEvent(event)
 

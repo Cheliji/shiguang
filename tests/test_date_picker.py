@@ -7,7 +7,7 @@
 - 非当月日期灰色、当月白色、滚轮被忽略。
 """
 
-from PySide6.QtCore import QDate
+from PySide6.QtCore import QDate, Qt
 from PySide6.QtWidgets import QWidget
 
 from shiguang.ui.theme import Color
@@ -154,6 +154,35 @@ def test_only_selected_date_highlighted(qtbot):
     ]
     assert highlighted == ["2030-05-20"]
     assert popup._selected == QDate(2030, 5, 20)
+
+
+def test_window_is_frameless_translucent_without_system_shadow(qtbot):
+    """窗口层：无边框、透明、禁用系统直角投影，否则圆角外会出现方形边框。"""
+    popup = CalendarPopup()
+    qtbot.addWidget(popup)
+    flags = popup.windowFlags()
+
+    assert flags & Qt.WindowType.Popup
+    assert flags & Qt.WindowType.FramelessWindowHint
+    assert flags & Qt.WindowType.NoDropShadowWindowHint
+    assert popup.testAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
+    assert not popup.autoFillBackground()
+    assert "background: transparent" in popup.styleSheet()
+
+
+def test_window_is_clipped_to_rounded_shape(qtbot):
+    """圆角 mask：窗口仅存在圆角形状，四角外无任何像素（不存在直角边框）。"""
+    popup = CalendarPopup()
+    qtbot.addWidget(popup)
+    popup.reset(None)
+    img = _render(popup)
+    w, h = img.width(), img.height()
+
+    assert not popup.mask().isEmpty()
+    for x, y in [(0, 0), (w - 1, 0), (0, h - 1), (w - 1, h - 1)]:
+        assert img.pixelColor(x, y).alpha() == 0, f"({x},{y}) 圆角外存在像素"
+    # 四边中点属于卡片本体（或圆角内的头部），应有内容
+    assert img.pixelColor(w // 2, h // 2).alpha() > 0
 
 
 def test_button_picks_date_via_popup(qtbot):
