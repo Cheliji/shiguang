@@ -1,33 +1,28 @@
 """日期选择按钮 + 自绘日历弹窗（替代 Qt 原生 QCalendarWidget）。
 
-设计要点（对齐用户需求）：
-- 日历整体背景色与主题色一致：头部工具栏使用 PRIMARY（Teal）；
-- 月份切换仅靠左右上角的 < > 矢量按钮（Feather chevron），步长 1 个月，
-  年份随跨年自动变化，年/月不可输入；
-- 禁止鼠标滚轮操作：忽略所有 wheel 事件；
-- 当月日期背景为白色，非当月日期显示为灰色；
-- 默认选中当日（主题色圆形凸显）；选中其他日期后当日恢复纯白，
-  全弹窗始终只有选中日期一个高亮，切换月份不残留。
+渲染策略（关键）：
+- 整个日历（圆角卡片、主题色头部、星期表头、日期数字、选中高亮、悬停反馈）
+  全部由 CalendarPopup.paintEvent 一次 QPainter 绘制，日期格仅保留透明命中区按钮。
+  不使用子控件 QSS 背景、不使用 QGraphicsDropShadowEffect —— 这两者在
+  WA_TranslucentBackground 的 Popup 窗口下会缓存渲染结果，刷新后易残留旧像素。
+  任何状态变化都整体 update()，逐帧全量重绘，杜绝残留。
+
+交互规则（对齐用户需求）：
+- 头部背景为主题色 PRIMARY，左右上角仅 < > 矢量按钮按月步进，年份随跨年自动变化；
+- 年/月只读，不可输入；禁止鼠标滚轮操作；
+- 当月日期白色背景、非当月日期灰色；
+- 默认选中当日并以主题色实心圆凸显；选中其他日期后当日立即恢复纯白，
+  全弹窗始终只有「选中日期」一个高亮，且与进入时的当日高亮样式完全一致。
 """
 
-from PySide6.QtCore import QDate, QPoint, QRectF, Qt, Signal
-from PySide6.QtGui import QColor, QPainter, QPen
-from PySide6.QtWidgets import (
-    QFrame,
-    QGraphicsDropShadowEffect,
-    QGridLayout,
-    QHBoxLayout,
-    QLabel,
-    QPushButton,
-    QToolButton,
-    QVBoxLayout,
-    QWidget,
-)
+from PySide6.QtCore import QDate, QEvent, QPoint, QRectF, Qt, Signal
+from PySide6.QtGui import QColor, QFont, QPainter, QPainterPath, QPen
+from PySide6.QtWidgets import QApplication, QPushButton, QToolButton, QWidget
 
 from shiguang.ui.icons import colored_icon
 from shiguang.ui.theme import Color, FontSize, Radius, Space
 
-_BUTTON_QSS = f"""
+_TRIGGER_QSS = f"""
 QToolButton {{
     background: {Color.SURFACE};
     border: 1px solid {Color.BG_SECONDARY};
@@ -44,189 +39,87 @@ QToolButton[placeholder="true"] {{
 }}
 """
 
-# 周一为一周之首（与代办表单 WEEKDAY_NAMES 约定一致）
+# 命中区按钮：完全透明，只负责点击与悬停事件，视觉全部由弹窗自绘
+_HIT_QSS = "background: transparent; border: none;"
+
+# 布局常量（周一起始，与代办表单 WEEKDAY_NAMES 约定一致）
 _WEEKDAY_HEADERS = ["一", "二", "三", "四", "五", "六", "日"]
-_CELL_SIZE = 36
+_CELL = 36
+_GAP = 4
+_PAD = 12
 _HEADER_HEIGHT = 48
-_POPUP_QSS = f"""
-#calTitle {{
-    background: transparent;
-    color: #FFFFFF;
-    font-size: {FontSize.CARD_TITLE}px;
-    font-weight: 600;
-}}
-QToolButton#calPrev, QToolButton#calNext {{
-    background: transparent;
-    border: none;
-    border-radius: 6px;
-}}
-QToolButton#calPrev:hover, QToolButton#calNext:hover {{
-    background: rgba(255, 255, 255, 0.18);
-}}
-QToolButton#calPrev:pressed, QToolButton#calNext:pressed {{
-    background: rgba(255, 255, 255, 0.30);
-}}
-#calWeekday {{
-    background: transparent;
-    color: {Color.TEXT_SECONDARY};
-    font-size: {FontSize.TINY}px;
-}}
-"""
+_WEEKDAY_HEIGHT = 22
+_SHADOW_MARGIN = 12  # 左右+上留白（绘制柔和投影）
+_SHADOW_BOTTOM = 18  # 下方留白略大，投影自然下落
 
-
-def _day_qss(active: bool, outside: bool) -> str:
-    """单个日期格样式：每次刷新整块替换，不依赖动态属性，旧样式不会残留。
-
-    全弹窗只有一个高亮——当前选中日期（实心主题色圆 + 白字）；
-    进入时默认选中当日，选中其他日期后当日立即恢复纯白。
-    """
-    base = (
-        "QPushButton { border: none;"
-        f" border-radius: {_CELL_SIZE // 2}px;"
-        f" font-size: {FontSize.AUXILIARY}px;"
-    )
-    if active:
-        # 选中日：主题色实心圆（与刚进入时的当日高亮完全一致）
-        return base + f" background: {Color.PRIMARY}; color: #FFFFFF; font-weight: 600; }}"
-    if outside:
-        # 非当月：白底 + 灰色文字，无悬停反馈
-        return base + f" background: {Color.SURFACE}; color: {Color.TEXT_TERTIARY}; }}"
-    # 当月普通日：白底黑字，悬停淡主题色提示
-    return (
-        base
-        + f" background: {Color.SURFACE}; color: {Color.TEXT_PRIMARY}; }}"
-        f" QPushButton:hover {{ background: {Color.PRIMARY_LIGHT};"
-        f" color: {Color.PRIMARY}; }}"
-    )
-
-
-class _CalendarCard(QFrame):
-    """日历卡片：白色圆角底 + 主题色头部，用 QPainter 手绘。
-
-    QSS 的 border-radius 在顶层弹窗边缘容易残留直角底色（窗口矩形背景
-    未被裁剪），手绘抗锯齿圆角可彻底避免该问题。
-    """
-
-    def __init__(self, parent: QWidget | None = None) -> None:
-        super().__init__(parent)
-        # 关闭 QFrame 默认绘制，背景完全由 paintEvent 接管
-        self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, False)
-
-    def paintEvent(self, event) -> None:  # noqa: N802 — Qt 命名
-        painter = QPainter(self)
-        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
-        rect = QRectF(self.rect())
-
-        # 1) 白色圆角底 + 1px 描边（向内收缩 0.5px 避免描边被裁切）
-        painter.setPen(QPen(QColor(Color.BG_SECONDARY), 1))
-        painter.setBrush(QColor(Color.SURFACE))
-        painter.drawRoundedRect(rect.adjusted(0.5, 0.5, -0.5, -0.5), Radius.LG, Radius.LG)
-
-        # 2) 主题色头部：仅顶部两角圆角（先画全圆角矩形，再用矩形盖住底部圆角）
-        header = QRectF(rect.left(), rect.top(), rect.width(), _HEADER_HEIGHT)
-        painter.setPen(Qt.PenStyle.NoPen)
-        painter.setBrush(QColor(Color.PRIMARY))
-        painter.drawRoundedRect(header, Radius.LG, Radius.LG)
-        painter.drawRect(QRectF(header.left(), header.top() + Radius.LG, header.width(), Radius.LG))
+_CARD_WIDTH = _PAD * 2 + 7 * _CELL + 6 * _GAP
+_CARD_HEIGHT = _HEADER_HEIGHT + 8 + _WEEKDAY_HEIGHT + 8 + 6 * _CELL + 5 * _GAP + _PAD
+_GRID_TOP = _HEADER_HEIGHT + 8 + _WEEKDAY_HEIGHT + 8
+_WEEKDAY_TOP = _HEADER_HEIGHT + 8
 
 
 class CalendarPopup(QWidget):
-    """自绘日历弹窗：主题色头部 + 白色日期网格，仅供 DatePickerButton 使用。"""
+    """自绘日历弹窗：一次 QPainter 全量绘制，仅供 DatePickerButton 使用。"""
 
     dateSelected = Signal(QDate)
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
+        # 顶层独立窗口：不继承对话框（qfluentwidgets MessageBoxBase）的样式表，
+        # 避免外部 QSS（如 QLabel{color:black}）干扰日历配色
         self.setWindowFlags(Qt.WindowType.Popup | Qt.WindowType.FramelessWindowHint)
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
+        self.setAttribute(Qt.WidgetAttribute.WA_NoSystemBackground)
+        self.setFixedSize(
+            _CARD_WIDTH + _SHADOW_MARGIN * 2, _CARD_HEIGHT + _SHADOW_MARGIN + _SHADOW_BOTTOM
+        )
         self.setCursor(Qt.CursorShape.PointingHandCursor)
-        self.setStyleSheet(_POPUP_QSS)
 
         self._month = QDate(QDate.currentDate().year(), QDate.currentDate().month(), 1)
-        self._selected: QDate | None = None
+        self._selected: QDate = QDate.currentDate()
+        self._hover: QDate | None = None
+        self._dates: list[QDate] = []
+
+        # 日期命中区（透明按钮，不绘制任何视觉）
         self._day_buttons: list[QPushButton] = []
-
-        # 外层留白给投影，卡片手绘圆角 + 阴影彻底消除直角残留
-        outer = QVBoxLayout(self)
-        outer.setContentsMargins(Space.SM + 2, Space.SM, Space.SM + 2, Space.SM + 6)
-        self._card = _CalendarCard(self)
-        outer.addWidget(self._card)
-
-        shadow = QGraphicsDropShadowEffect(self)
-        shadow.setBlurRadius(20)
-        shadow.setOffset(0, 4)
-        shadow.setColor(QColor(0, 0, 0, 26))  # ≈ rgba(0,0,0,0.10)
-        self._card.setGraphicsEffect(shadow)
-
-        layout = QVBoxLayout(self._card)
-        layout.setContentsMargins(0, 0, 0, 0)
-        layout.setSpacing(0)
-        layout.addWidget(self._build_header())
-
-        # 星期表头 + 6×7 日期网格（固定 6 行，保证不同月份高度一致）
-        grid = QGridLayout()
-        grid.setContentsMargins(Space.SM, Space.SM, Space.SM, Space.SM)
-        grid.setHorizontalSpacing(4)
-        grid.setVerticalSpacing(4)
-        for col, name in enumerate(_WEEKDAY_HEADERS):
-            label = QLabel(name)
-            label.setObjectName("calWeekday")
-            label.setFixedSize(_CELL_SIZE, 20)
-            label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-            grid.addWidget(label, 0, col)
-        for index in range(42):
-            row, col = divmod(index + 7, 7)
-            button = QPushButton(self._card)
+        for _index in range(42):
+            button = QPushButton(self)
+            button.setStyleSheet(_HIT_QSS)
             button.setFlat(True)
-            button.setFixedSize(_CELL_SIZE, _CELL_SIZE)
+            button.setFixedSize(_CELL, _CELL)
             button.setCursor(Qt.CursorShape.PointingHandCursor)
             button.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+            button.installEventFilter(self)
             button.clicked.connect(lambda _c=False, b=button: self._on_day_clicked(b))
             self._day_buttons.append(button)
-            grid.addWidget(button, row, col)
-        layout.addLayout(grid)
+
+        self._prev_button = self._make_nav_button("chevron-left", "上个月", -1)
+        self._next_button = self._make_nav_button("chevron-right", "下个月", 1)
+
+        self._refresh()
 
     # ---------- 结构 ----------
-    def _build_header(self) -> QFrame:
-        """头部内容层（透明容器，主题色背景由 _CalendarCard 手绘）：
-        左上 < 右上 > 矢量按钮，中间只读年月文本。"""
-        header = QFrame(self._card)
-        header.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, False)
-        header.setFixedHeight(_HEADER_HEIGHT)
-        row = QHBoxLayout(header)
-        row.setContentsMargins(Space.SM, Space.SM, Space.SM, Space.SM)
-        row.setSpacing(0)
-
-        self._prev_button = QToolButton(header)
-        self._prev_button.setObjectName("calPrev")
-        self._prev_button.setIcon(colored_icon("chevron-left", "#FFFFFF", 18))
-        self._prev_button.setFixedSize(32, 32)
-        self._prev_button.setCursor(Qt.CursorShape.PointingHandCursor)
-        self._prev_button.setToolTip("上个月")
-        self._prev_button.clicked.connect(lambda: self._navigate(-1))
-
-        self._title_label = QLabel(header)
-        self._title_label.setObjectName("calTitle")
-        self._title_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-
-        self._next_button = QToolButton(header)
-        self._next_button.setObjectName("calNext")
-        self._next_button.setIcon(colored_icon("chevron-right", "#FFFFFF", 18))
-        self._next_button.setFixedSize(32, 32)
-        self._next_button.setCursor(Qt.CursorShape.PointingHandCursor)
-        self._next_button.setToolTip("下个月")
-        self._next_button.clicked.connect(lambda: self._navigate(1))
-
-        row.addWidget(self._prev_button)
-        row.addWidget(self._title_label, 1)
-        row.addWidget(self._next_button)
-        return header
+    def _make_nav_button(self, icon_name: str, tip: str, step: int) -> QToolButton:
+        button = QToolButton(self)
+        button.setIcon(colored_icon(icon_name, "#FFFFFF", 18))
+        button.setFixedSize(32, 32)
+        button.setCursor(Qt.CursorShape.PointingHandCursor)
+        button.setToolTip(tip)
+        button.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+        button.setStyleSheet(
+            "QToolButton { background: transparent; border: none; border-radius: 6px; }"
+            "QToolButton:hover { background: rgba(255, 255, 255, 0.18); }"
+            "QToolButton:pressed { background: rgba(255, 255, 255, 0.30); }"
+        )
+        button.clicked.connect(lambda _c=False: self._navigate(step))
+        return button
 
     # ---------- 状态 ----------
     def reset(self, initial: QDate | None = None) -> None:
         """打开弹窗时初始化：默认选中当日（凸显）；有预设日期则选中预设日期。"""
         self._selected = QDate(initial) if initial is not None else QDate.currentDate()
         self._month = QDate(self._selected.year(), self._selected.month(), 1)
+        self._hover = None
         self._refresh()
 
     def _navigate(self, step: int) -> None:
@@ -235,20 +128,152 @@ class CalendarPopup(QWidget):
         self._refresh()
 
     def _refresh(self) -> None:
-        self._title_label.setText(f"{self._month.year()}年 {self._month.month()}月")
         # 周一起始：dayOfWeek() 周一=1 … 周日=7 → 列索引 = dayOfWeek()-1
-        lead = self._month.dayOfWeek() - 1
-        start = self._month.addDays(-lead)
+        start = self._month.addDays(-(self._month.dayOfWeek() - 1))
+        self._dates = [start.addDays(i) for i in range(42)]
+        for button, day in zip(self._day_buttons, self._dates, strict=True):
+            button._date = day  # noqa: SLF001 — 命中区内部数据载体
+        self._layout_children()
+        self.update()  # 整体重绘：不依赖增量刷新，旧高亮不可能残留
+
+    def _layout_children(self) -> None:
+        card_x = _SHADOW_MARGIN
+        card_y = _SHADOW_MARGIN
+        self._prev_button.move(card_x + _PAD - 4, card_y + 8)
+        self._next_button.move(card_x + _CARD_WIDTH - _PAD - 28, card_y + 8)
+        grid_x = card_x + _PAD
+        grid_y = card_y + _GRID_TOP
         for index, button in enumerate(self._day_buttons):
-            day = start.addDays(index)
-            # 全弹窗唯一高亮：当前选中日期；选中其他日期后当日即恢复纯白
-            active = self._selected is not None and day == self._selected
+            row, col = divmod(index, 7)
+            button.move(grid_x + col * (_CELL + _GAP), grid_y + row * (_CELL + _GAP))
+
+    def title_text(self) -> str:
+        return f"{self._month.year()}年 {self._month.month()}月"
+
+    # ---------- 绘制 ----------
+    def paintEvent(self, event) -> None:  # noqa: N802 — Qt 命名
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+        card = QRectF(_SHADOW_MARGIN, _SHADOW_MARGIN, _CARD_WIDTH, _CARD_HEIGHT)
+
+        self._paint_shadow(painter, card)
+        self._paint_card(painter, card)
+
+        painter.save()
+        painter.setClipPath(self._card_path(card))
+        self._paint_header(painter, card)
+        self._paint_weekdays(painter, card)
+        self._paint_days(painter)
+        painter.restore()
+
+    @staticmethod
+    def _card_path(card: QRectF) -> QPainterPath:
+        path = QPainterPath()
+        path.addRoundedRect(card, Radius.LG, Radius.LG)
+        return path
+
+    @staticmethod
+    def _paint_shadow(painter: QPainter, card: QRectF) -> None:
+        """手绘柔和投影：多层低透明度圆角矩形，静态绘制、无特效缓存。"""
+        painter.setPen(Qt.PenStyle.NoPen)
+        for step in range(6, 0, -1):
+            painter.setBrush(QColor(0, 0, 0, 4))
+            offset = step * 1.2
+            shadow_rect = card.adjusted(
+                -offset + 1, -offset + 2, offset - 1, offset
+            )
+            painter.drawRoundedRect(
+                shadow_rect, Radius.LG + 4, Radius.LG + 4
+            )
+
+    @staticmethod
+    def _paint_card(painter: QPainter, card: QRectF) -> None:
+        """白色圆角卡片 + 1px 描边（手绘保证圆角无直角残留）。"""
+        painter.setPen(QPen(QColor(Color.BG_SECONDARY), 1))
+        painter.setBrush(QColor(Color.SURFACE))
+        painter.drawRoundedRect(card.adjusted(0.5, 0.5, -0.5, -0.5), Radius.LG, Radius.LG)
+
+    def _paint_header(self, painter: QPainter, card: QRectF) -> None:
+        """主题色头部（仅顶部圆角）：年月文本只读居中，左右为 < > 按钮。"""
+        header = QRectF(card.left(), card.top(), card.width(), _HEADER_HEIGHT)
+        painter.setPen(Qt.PenStyle.NoPen)
+        painter.setBrush(QColor(Color.PRIMARY))
+        painter.drawRoundedRect(header, Radius.LG, Radius.LG)
+        painter.drawRect(
+            QRectF(
+                header.left(),
+                header.top() + Radius.LG,
+                header.width(),
+                _HEADER_HEIGHT - Radius.LG,
+            )
+        )
+
+        font = QFont(self.font())
+        font.setPixelSize(FontSize.CARD_TITLE)
+        font.setBold(True)
+        painter.setFont(font)
+        painter.setPen(QColor("#FFFFFF"))
+        painter.drawText(header, Qt.AlignmentFlag.AlignCenter, self.title_text())
+
+    def _paint_weekdays(self, painter: QPainter, card: QRectF) -> None:
+        font = QFont(self.font())
+        font.setPixelSize(FontSize.TINY)
+        painter.setFont(font)
+        painter.setPen(QColor(Color.TEXT_SECONDARY))
+        top = card.top() + _WEEKDAY_TOP
+        for col, name in enumerate(_WEEKDAY_HEADERS):
+            cell = QRectF(
+                card.left() + _PAD + col * (_CELL + _GAP), top, _CELL, _WEEKDAY_HEIGHT
+            )
+            painter.drawText(cell, Qt.AlignmentFlag.AlignCenter, name)
+
+    def _paint_days(self, painter: QPainter) -> None:
+        """日期数字与高亮：唯一高亮 = 选中日期（主题色实心圆 + 白字）。"""
+        normal_font = QFont(self.font())
+        normal_font.setPixelSize(FontSize.AUXILIARY)
+        bold_font = QFont(normal_font)
+        bold_font.setBold(True)
+
+        for button, day in zip(self._day_buttons, self._dates, strict=True):
+            cell = QRectF(button.geometry())
+            active = day == self._selected
             outside = day.month() != self._month.month()
-            button.setText(str(day.day()))
-            button.setStyleSheet(_day_qss(active, outside))
-            button._date = day  # noqa: SLF001 — 弹窗内部数据载体
+
+            if active:
+                painter.setPen(Qt.PenStyle.NoPen)
+                painter.setBrush(QColor(Color.PRIMARY))
+                painter.drawEllipse(cell.adjusted(0.5, 0.5, -0.5, -0.5))
+                color = QColor("#FFFFFF")
+                painter.setFont(bold_font)
+            elif outside:
+                color = QColor(Color.TEXT_TERTIARY)
+                painter.setFont(normal_font)
+            else:
+                if self._hover == day:
+                    painter.setPen(Qt.PenStyle.NoPen)
+                    painter.setBrush(QColor(Color.PRIMARY_LIGHT))
+                    painter.drawEllipse(cell.adjusted(0.5, 0.5, -0.5, -0.5))
+                    color = QColor(Color.PRIMARY)
+                else:
+                    color = QColor(Color.TEXT_PRIMARY)
+                painter.setFont(normal_font)
+
+            painter.setPen(color)
+            painter.drawText(cell, Qt.AlignmentFlag.AlignCenter, str(day.day()))
 
     # ---------- 交互 ----------
+    def eventFilter(self, obj, event) -> bool:  # noqa: N802 — Qt 命名
+        """日期格悬停反馈：进入/离开时更新悬停日期并整体重绘。"""
+        if isinstance(obj, QPushButton) and getattr(obj, "_date", None) is not None:
+            if event.type() == QEvent.Type.Enter:
+                self._hover = obj._date  # noqa: SLF001
+                self.update()
+            elif event.type() == QEvent.Type.Leave:
+                if self._hover == obj._date:  # noqa: SLF001
+                    self._hover = None
+                    self.update()
+        return super().eventFilter(obj, event)
+
     def _on_day_clicked(self, button: QPushButton) -> None:
         day = getattr(button, "_date", None)
         if day is None:
@@ -282,7 +307,7 @@ class DatePickerButton(QToolButton):
         self.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextBesideIcon)
         self.setCursor(Qt.CursorShape.PointingHandCursor)
         self.setFixedHeight(40)
-        self.setStyleSheet(_BUTTON_QSS)
+        self.setStyleSheet(_TRIGGER_QSS)
         self._refresh_text()
         self.clicked.connect(self._show_calendar)
 
@@ -319,14 +344,23 @@ class DatePickerButton(QToolButton):
 
     def _show_calendar(self) -> None:
         if self._popup is None:
-            self._popup = CalendarPopup(self.window())
+            self._popup = CalendarPopup()  # 顶层独立窗口：不继承对话框样式表
             self._popup.dateSelected.connect(self._on_date_selected)
-        # 无预设日期时默认定位当日（今日以主题色凸显）
+            app = QApplication.instance()
+            if app is not None:
+                app.aboutToQuit.connect(self._popup.close)
+        # 无预设日期时默认选中当日（主题色凸显）
         self._popup.reset(self._date)
         self._popup.move(self.mapToGlobal(QPoint(0, self.height() + Space.XS)))
         self._popup.show()
         self._popup.raise_()
         self._popup.activateWindow()
+
+    def hideEvent(self, event) -> None:  # noqa: N802 — Qt 命名
+        """宿主对话框关闭/隐藏时一并收起日历弹窗，避免残留无主窗口。"""
+        if self._popup is not None:
+            self._popup.close()
+        super().hideEvent(event)
 
     def _on_date_selected(self, value: QDate) -> None:
         self._date = QDate(value)
