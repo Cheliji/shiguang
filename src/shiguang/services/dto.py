@@ -1,9 +1,10 @@
 """UI 与服务层之间的数据传输对象（DTO）。
 
-字段取值的合法枚举（T16 会在 domain/enums.py 正式定义，此处先用字符串约定）：
-- repeat: "none" / "daily" / "weekly" / "monthly"
-- delay_policy: "default" / "never" / "auto"
-- status: "pending" / "archived"
+字段取值的合法枚举定义在 `domain/enums.py`（T16），此处常量为枚举成员值的别名
+（保持 UI 层既有用法零改动）：
+- repeat: Repeat.NONE/DAILY/WEEKLY/MONTHLY
+- delay_policy: DelayPolicy.DEFAULT/NEVER/AUTO
+- status: TaskStatus.PENDING/ARCHIVED
 """
 
 from __future__ import annotations
@@ -11,11 +12,13 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import date, datetime
 
+from shiguang.domain.enums import DelayPolicy, Repeat, TaskStatus
+
 # 重复周期
-REPEAT_NONE = "none"
-REPEAT_DAILY = "daily"
-REPEAT_WEEKLY = "weekly"
-REPEAT_MONTHLY = "monthly"
+REPEAT_NONE = Repeat.NONE.value
+REPEAT_DAILY = Repeat.DAILY.value
+REPEAT_WEEKLY = Repeat.WEEKLY.value
+REPEAT_MONTHLY = Repeat.MONTHLY.value
 REPEAT_CHOICES = (REPEAT_NONE, REPEAT_DAILY, REPEAT_WEEKLY, REPEAT_MONTHLY)
 REPEAT_LABELS = {
     REPEAT_NONE: "不重复",
@@ -25,9 +28,9 @@ REPEAT_LABELS = {
 }
 
 # 延期策略
-DELAY_DEFAULT = "default"
-DELAY_NEVER = "never"
-DELAY_AUTO = "auto"
+DELAY_DEFAULT = DelayPolicy.DEFAULT.value
+DELAY_NEVER = DelayPolicy.NEVER.value
+DELAY_AUTO = DelayPolicy.AUTO.value
 DELAY_CHOICES = (DELAY_DEFAULT, DELAY_NEVER, DELAY_AUTO)
 DELAY_LABELS = {
     DELAY_DEFAULT: "默认（不延期）",
@@ -36,8 +39,8 @@ DELAY_LABELS = {
 }
 
 # 状态
-STATUS_PENDING = "pending"
-STATUS_ARCHIVED = "archived"
+STATUS_PENDING = TaskStatus.PENDING.value
+STATUS_ARCHIVED = TaskStatus.ARCHIVED.value
 
 
 @dataclass
