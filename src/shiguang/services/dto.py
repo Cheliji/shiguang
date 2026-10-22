@@ -49,10 +49,8 @@ class TodoItem:
     standard: str = ""
     description: str = ""
     date: date | None = None
-    end_date: date | None = None  # 每日重复模板的结束日期（可空=长期）
-    repeat: str = REPEAT_NONE
-    weekday: int | None = None  # weekly: 0=周一 ... 6=周日
-    month_day: int | None = None  # monthly: 1-31
+    repeat: str = REPEAT_NONE  # 创建时选择的重复规则；repeat != none 的记录属某个重复系列
+    series_id: str | None = None  # 同一次创建时展开生成的记录共享同一系列标识
     delay_policy: str = DELAY_DEFAULT
     delay_count: int = 0
     status: str = STATUS_PENDING

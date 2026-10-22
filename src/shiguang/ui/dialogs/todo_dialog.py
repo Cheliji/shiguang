@@ -1,7 +1,8 @@
 """代办创建/编辑对话框（规格：UI 设计文档 §4.3）。
 
 T10：名称/描述/完成标准（必填校验）。
-T11：重复周期 + 日期联动（不重复→日期；每日→日期范围；每周→星期多选；每月→1-31 网格）。
+T24：重复周期 + 日期联动（v1.3 §4.3.3）：不重复→计划日期；每日/每周/每月→
+「开始日期 + 结束日期」（均必填），附生成条数实时预览，校验失败禁用确认按钮。
 T12：延期策略单选组 + 关联目标占位（禁用）。
 
 重写要点（对齐 §4.3.1/§4.3.2 与 AGENT.md「UI 样式规则」）：
@@ -16,10 +17,8 @@ from datetime import date
 from PySide6.QtCore import QDate, QEasingCurve, QPropertyAnimation, Qt
 from PySide6.QtWidgets import (
     QButtonGroup,
-    QGridLayout,
     QHBoxLayout,
     QLabel,
-    QPushButton,
     QRadioButton,
     QStackedWidget,
     QToolButton,
@@ -28,6 +27,7 @@ from PySide6.QtWidgets import (
 )
 from qfluentwidgets import LineEdit, MessageBoxBase
 
+from shiguang.domain.rules import expand_dates
 from shiguang.services.dto import (
     REPEAT_DAILY,
     REPEAT_LABELS,
@@ -65,17 +65,6 @@ LineEdit, TextEdit {{
 }}
 """
 
-_PILL_QSS = f"""
-QPushButton {{
-    background: {Color.SURFACE}; color: {Color.TEXT_SECONDARY};
-    border: 1px solid {Color.BG_SECONDARY}; border-radius: 8px;
-    padding: 6px 12px; font-size: {FontSize.AUXILIARY}px;
-}}
-QPushButton:checked {{
-    background: {Color.PRIMARY}; color: #FFFFFF; border: 1px solid {Color.PRIMARY};
-}}
-"""
-
 _RADIO_QSS = f"""
 QRadioButton {{
     font-size: {FontSize.BODY}px;
@@ -88,20 +77,12 @@ QRadioButton::indicator {{
 }}
 """
 
-WEEKDAY_NAMES = ["一", "二", "三", "四", "五", "六", "日"]
-
-# 每月 1~31 网格按钮：32px 固定尺寸，不能带水平内边距，否则两位数字会被裁切
-_GRID_PILL_QSS = _PILL_QSS.replace("padding: 6px 12px;", "padding: 0;")
-
 # §4.3.1：弹窗最大高度 680px，超出内部滚动
 _DIALOG_MAX_HEIGHT = 680
 
 
 class TodoDialog(MessageBoxBase):
-    """创建/编辑代办对话框。校验通过后 accept()，调用方用 get_data() 取数据。
-
-    MVP 约定（T11 备注）：每周/每月多选 UI 保留，但存储取单选值，v1.x 扩展列表字段。
-    """
+    """创建/编辑代办对话框。校验通过后 accept()，调用方用 get_data() 取数据。"""
 
     def __init__(self, parent: QWidget | None = None, item: TodoItem | None = None) -> None:
         super().__init__(parent)
@@ -230,186 +211,154 @@ class TodoDialog(MessageBoxBase):
             self.repeat_combo.addItem(REPEAT_LABELS[value], value)
         self.repeat_combo.setFixedHeight(40)
         self.repeat_combo.setStyleSheet(_FIELD_QSS)
-        self.repeat_combo.currentIndexChanged.connect(self._on_repeat_changed)
         col_repeat.addWidget(self.repeat_combo)
         row.addLayout(col_repeat, 1)
 
-        col_date = QVBoxLayout()
-        col_date.setSpacing(Space.XS)
-        self.date_label = self._plain_label("计划日期")
-        col_date.addWidget(self.date_label)
+        # 日期区：不重复 → 单个计划日期；每日/每周/每月 → 开始 + 结束（均必填）
         self.date_stack = QStackedWidget(self.widget)
-        self.date_stack.addWidget(self._page_none())
-        self.date_stack.addWidget(self._page_daily())
-        self.date_stack.addWidget(self._page_placeholder("见下方星期选择"))
-        self.date_stack.addWidget(self._page_placeholder("见下方日期选择"))
-        self.date_stack.setFixedHeight(40)
-        col_date.addWidget(self.date_stack)
-        row.addLayout(col_date, 2)
+        self.date_stack.addWidget(self._page_none())  # 0：计划日期
+        self.date_stack.addWidget(self._page_range())  # 1：开始日期 + 结束日期
+        row.addWidget(self.date_stack, 2)
 
         area.addLayout(row)
 
-        # 展开区（每周/每月）——不重复/每日时整体隐藏，避免 QStackedLayout
-        # 按最大子页预留高度造成大片空白
-        self.expand_stack = QStackedWidget(self.widget)
-        self.expand_stack.addWidget(QWidget())  # 空占位（不重复）
-        self.expand_stack.addWidget(QWidget())  # 空占位（每日无展开）
-        self.expand_stack.addWidget(self._expand_weekly())
-        self.expand_stack.addWidget(self._expand_monthly())
-        self.expand_stack.setVisible(False)
-        area.addWidget(self.expand_stack)
+        # 编辑重复系列单条记录时的只读提示（默认隐藏）
+        self.repeat_hint = QLabel("重复代办的修改仅作用于当前这一条")
+        self.repeat_hint.setStyleSheet(
+            f"color: {Color.TEXT_TERTIARY}; font-size: {FontSize.TINY}px;"
+        )
+        self.repeat_hint.hide()
+        area.addWidget(self.repeat_hint)
 
+        # 生成条数实时预览 / 校验错误提示（默认隐藏）
+        self.preview_label = QLabel("")
+        self.preview_label.hide()
+        area.addWidget(self.preview_label)
+
+        # 信号：重复切换与日期变化都刷新预览
+        self.repeat_combo.currentIndexChanged.connect(self._on_repeat_changed)
+        self.start_picker.dateChanged.connect(lambda _v: self._update_preview())
+        self.end_picker.dateChanged.connect(lambda _v: self._update_preview())
+        self.end_picker.dateCleared.connect(self._update_preview)
         return area
 
     def _page_none(self) -> QWidget:
         page = QWidget(self.widget)
-        layout = QHBoxLayout(page)
+        layout = QVBoxLayout(page)
         layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(Space.XS)
+        layout.addWidget(self._plain_label("计划日期"))
         self.date_picker = DatePickerButton(page)
         self.date_picker.setDate(QDate.currentDate())
         layout.addWidget(self.date_picker)
-        layout.addStretch(1)
         return page
 
-    def _page_daily(self) -> QWidget:
+    def _page_range(self) -> QWidget:
+        """每日/每周/每月：开始日期 + 结束日期（均必填）。
+
+        每周的“周几”由开始日期隐含决定；每月的“几号”由开始日期的日号隐含决定，
+        不再有星期多选 / 1~31 网格（UI v1.3）。
+        """
         page = QWidget(self.widget)
         layout = QHBoxLayout(page)
         layout.setContentsMargins(0, 0, 0, 0)
-        layout.setSpacing(Space.SM)
+        layout.setSpacing(Space.MD)
+
+        col_start = QVBoxLayout()
+        col_start.setSpacing(Space.XS)
+        col_start.addWidget(self._plain_label("开始日期", required=True))
         self.start_picker = DatePickerButton(page)
         self.start_picker.setDate(QDate.currentDate())
-        to_label = QLabel("至", page)
-        to_label.setStyleSheet(
-            f"color: {Color.TEXT_SECONDARY}; font-size: {FontSize.BODY}px; background: transparent;"
-        )
-        # 结束日期可选（§4.3.2）：不选 = 长期重复；选了可用 × 清除回到长期
-        self.end_picker = DatePickerButton(page, placeholder="结束日期（可选）")
-        self.end_clear = QToolButton(page)
-        self.end_clear.setIcon(colored_icon("x", Color.TEXT_SECONDARY, 14))
-        self.end_clear.setFixedSize(24, 24)
-        self.end_clear.setToolTip("清除结束日期（长期重复）")
-        self.end_clear.setStyleSheet(
-            "QToolButton { border: none; border-radius: 4px; background: transparent; }"
-            f"QToolButton:hover {{ background: {Color.BG_SECONDARY}; }}"
-        )
-        self.end_clear.clicked.connect(self.end_picker.clearDate)
-        self.end_picker.dateChanged.connect(lambda _v: self._sync_end_clear())
-        self.end_picker.dateCleared.connect(self._sync_end_clear)
-        self._sync_end_clear()
-        layout.addWidget(self.start_picker)
-        layout.addWidget(to_label)
-        layout.addWidget(self.end_picker)
-        layout.addWidget(self.end_clear)
-        layout.addStretch(1)
+        col_start.addWidget(self.start_picker)
+        layout.addLayout(col_start, 1)
+
+        col_end = QVBoxLayout()
+        col_end.setSpacing(Space.XS)
+        col_end.addWidget(self._plain_label("结束日期", required=True))
+        self.end_picker = DatePickerButton(page, placeholder="选择结束日期")
+        col_end.addWidget(self.end_picker)
+        layout.addLayout(col_end, 1)
         return page
 
-    def _sync_end_clear(self) -> None:
-        self.end_clear.setVisible(self.end_picker.hasDate())
-
-    def _page_placeholder(self, text: str) -> QWidget:
-        page = QWidget(self.widget)
-        layout = QHBoxLayout(page)
-        layout.setContentsMargins(0, 0, 0, 0)
-        label = QLabel(text)
-        label.setStyleSheet(f"color: {Color.TEXT_TERTIARY}; font-size: {FontSize.AUXILIARY}px;")
-        layout.addWidget(label)
-        layout.addStretch(1)
-        return page
-
-    def _expand_weekly(self) -> QWidget:
-        page = QWidget(self.widget)
-        layout = QVBoxLayout(page)
-        layout.setContentsMargins(0, 0, 0, 0)
-        layout.setSpacing(Space.XS)
-        hint = QLabel("选择重复的星期（可多选）")
-        hint.setStyleSheet(f"color: {Color.TEXT_SECONDARY}; font-size: {FontSize.AUXILIARY}px;")
-        layout.addWidget(hint)
-        pills = QHBoxLayout()
-        pills.setSpacing(Space.SM)
-        self.weekday_buttons: list[QPushButton] = []
-        self.weekday_group = QButtonGroup(page)
-        self.weekday_group.setExclusive(True)
-        for i, name in enumerate(WEEKDAY_NAMES):
-            button = QPushButton(name, page)
-            button.setCheckable(True)
-            button.setStyleSheet(_PILL_QSS)
-            button.setProperty("weekday", i)
-            self.weekday_group.addButton(button, i)
-            pills.addWidget(button)
-            self.weekday_buttons.append(button)
-        pills.addStretch(1)
-        layout.addLayout(pills)
-        return page
-
-    def _expand_monthly(self) -> QWidget:
-        page = QWidget(self.widget)
-        layout = QVBoxLayout(page)
-        layout.setContentsMargins(0, 0, 0, 0)
-        layout.setSpacing(Space.XS)
-        hint = QLabel("选择每月的重复日期")
-        hint.setStyleSheet(f"color: {Color.TEXT_SECONDARY}; font-size: {FontSize.AUXILIARY}px;")
-        layout.addWidget(hint)
-        grid = QGridLayout()
-        grid.setSpacing(4)
-        self.month_day_buttons: list[QPushButton] = []
-        self.month_day_group = QButtonGroup(page)
-        self.month_day_group.setExclusive(True)
-        for day in range(1, 32):
-            button = QPushButton(str(day), page)
-            button.setCheckable(True)
-            button.setFixedSize(32, 32)
-            button.setStyleSheet(_GRID_PILL_QSS)
-            self.month_day_group.addButton(button, day)
-            grid.addWidget(button, (day - 1) // 7, (day - 1) % 7)
-            self.month_day_buttons.append(button)
-        layout.addLayout(grid)
-        return page
-
-    def _on_repeat_changed(self, index: int) -> None:
+    def _on_repeat_changed(self, _index: int) -> None:
         repeat = self.repeat_combo.currentData()
-        self.expand_stack.setVisible(repeat in (REPEAT_WEEKLY, REPEAT_MONTHLY))
-        if repeat == REPEAT_NONE:
-            self.date_label.setText("计划日期")
-            self.date_stack.setCurrentIndex(0)
-            self.expand_stack.setCurrentIndex(0)
-        elif repeat == REPEAT_DAILY:
-            self.date_label.setText("日期范围")
-            self.date_stack.setCurrentIndex(1)
-            self.expand_stack.setCurrentIndex(1)
-        elif repeat == REPEAT_WEEKLY:
-            self.date_label.setText("计划日期")
-            self.date_stack.setCurrentIndex(2)
-            self.expand_stack.setCurrentIndex(2)
-        elif repeat == REPEAT_MONTHLY:
-            self.date_label.setText("计划日期")
-            self.date_stack.setCurrentIndex(3)
-            self.expand_stack.setCurrentIndex(3)
+        self.date_stack.setCurrentIndex(0 if repeat == REPEAT_NONE else 1)
+        self._update_preview()
+
+    # ---------- 生成条数预览与校验 ----------
+    @staticmethod
+    def _to_pydate(qdate: QDate) -> date:
+        return date(qdate.year(), qdate.month(), qdate.day())
+
+    def _repeat_error(self) -> str | None:
+        """重复日期区间校验：合法返回 None，否则返回错误文案。"""
+        if not self.end_picker.hasDate():
+            return "请选择结束日期"
+        start = self._to_pydate(self.start_picker.getDate())
+        end = self._to_pydate(self.end_picker.getDate())
+        try:
+            expand_dates(self.repeat_combo.currentData(), start, end)
+        except ValueError as e:
+            return str(e)
+        return None
+
+    def _update_preview(self) -> None:
+        """实时预览“将生成 N 条代办”；校验失败红色提示并禁用确认按钮。"""
+        if self._editing_repeat or self.repeat_combo.currentData() == REPEAT_NONE:
+            self.preview_label.hide()
+            self.yesButton.setEnabled(True)
+            return
+        error = self._repeat_error()
+        if error is not None:
+            self.preview_label.setText(error)
+            self.preview_label.setStyleSheet(
+                f"color: {Color.DANGER}; font-size: {FontSize.TINY}px;"
+            )
+            self.preview_label.show()
+            self.yesButton.setEnabled(False)
+            return
+        dates = expand_dates(
+            self.repeat_combo.currentData(),
+            self._to_pydate(self.start_picker.getDate()),
+            self._to_pydate(self.end_picker.getDate()),
+        )
+        self.preview_label.setText(
+            f"将生成 {len(dates)} 条代办（首条 {dates[0].isoformat()}，"
+            f"末条 {dates[-1].isoformat()}）"
+        )
+        self.preview_label.setStyleSheet(
+            f"color: {Color.TEXT_TERTIARY}; font-size: {FontSize.TINY}px;"
+        )
+        self.preview_label.show()
+        self.yesButton.setEnabled(True)
+
+    def expanded_count(self) -> int | None:
+        """创建重复代办时将生成的记录条数（供成功反馈文案）；不重复/非法区间返回 None。"""
+        if self._editing_repeat or self.repeat_combo.currentData() == REPEAT_NONE:
+            return None
+        if self._repeat_error() is not None:
+            return None
+        return len(
+            expand_dates(
+                self.repeat_combo.currentData(),
+                self._to_pydate(self.start_picker.getDate()),
+                self._to_pydate(self.end_picker.getDate()),
+            )
+        )
 
     def _prefill_repeat(self, item: TodoItem) -> None:
         index = self.repeat_combo.findData(item.repeat)
         self.repeat_combo.setCurrentIndex(index)
-        if item.repeat == REPEAT_NONE and item.date:
+        if item.date:
             self.date_picker.setDate(QDate(item.date.year, item.date.month, item.date.day))
-        elif item.repeat == REPEAT_DAILY and item.date:
-            self.start_picker.setDate(QDate(item.date.year, item.date.month, item.date.day))
-            if item.end_date:
-                self.end_picker.setDate(
-                    QDate(item.end_date.year, item.end_date.month, item.end_date.day)
-                )
-            else:
-                self.end_picker.clearDate()  # 长期重复：结束日期留空
-        elif item.repeat == REPEAT_WEEKLY and item.weekday is not None:
-            self.weekday_buttons[item.weekday].setChecked(True)
-        elif item.repeat == REPEAT_MONTHLY and item.month_day:
-            for button in self.month_day_buttons:
-                button.setChecked(button.text() == str(item.month_day))
-        # 编辑重复实例时锁定重复/日期区（规则不可修改）
-        if self._editing_repeat:
+        if item.repeat != REPEAT_NONE:
+            # 重复系列中的单条记录：重复/日期区只读，编辑仅作用于当前这一条
+            self.date_stack.setCurrentIndex(0)
             self.repeat_combo.setEnabled(False)
             self.date_stack.setEnabled(False)
-            self.expand_stack.setEnabled(False)
-            for button in self.weekday_buttons + self.month_day_buttons:
-                button.setEnabled(False)
+            self.repeat_hint.show()
+            self.preview_label.hide()
+            self.yesButton.setEnabled(True)
 
     # ---------- 延期策略（T12，§4.3.3 圆形单选组） ----------
     def _build_delay_area(self) -> QVBoxLayout:
@@ -469,8 +418,8 @@ class TodoDialog(MessageBoxBase):
         return area
 
     # ---------- 表单部件 ----------
-    def _plain_label(self, text: str) -> QLabel:
-        label = QLabel(text)
+    def _plain_label(self, text: str, required: bool = False) -> QLabel:
+        label = QLabel(f'{text} <span style="color:{Color.DANGER}">*</span>' if required else text)
         label.setStyleSheet(f"font-size: {FontSize.BODY}px; font-weight: 500;")
         return label
 
@@ -516,6 +465,14 @@ class TodoDialog(MessageBoxBase):
         else:
             self._clear_error(self.standard_edit, self.standard_error)
 
+        # 重复日期区间兑底校验（正常已被预览提示 + 禁用确认按钮拦截）
+        if (
+            not self._editing_repeat
+            and self.repeat_combo.currentData() != REPEAT_NONE
+            and self._repeat_error() is not None
+        ):
+            ok = False
+
         if not ok:
             self._shake()
         return ok
@@ -549,36 +506,24 @@ class TodoDialog(MessageBoxBase):
 
     # ---------- 数据 ----------
     def get_data(self) -> dict:
-        repeat = self.repeat_combo.currentData()
         data: dict = {
             "name": self.name_edit.text().strip(),
             "description": self.desc_edit.toPlainText().strip(),
             "standard": self.standard_edit.toPlainText().strip(),
-            "repeat": repeat,
             "delay_policy": self._selected_delay_policy(),
         }
+        if self._editing_repeat:
+            # 重复系列单条记录：重复/日期字段锁定，不下发（编辑仅作用于当前这一条）
+            return data
 
+        repeat = self.repeat_combo.currentData()
+        data["repeat"] = repeat
         if repeat == REPEAT_NONE:
-            qdate = self.date_picker.getDate()
-            data["day"] = date(qdate.year(), qdate.month(), qdate.day())
-        elif repeat == REPEAT_DAILY:
-            qdate = self.start_picker.getDate()
-            data["day"] = date(qdate.year(), qdate.month(), qdate.day())
-            if self.end_picker.hasDate():
-                qend = self.end_picker.getDate()
-                data["end_date"] = date(qend.year(), qend.month(), qend.day())
-            else:
-                data["end_date"] = None  # 未选结束日期 = 长期重复
-        elif repeat == REPEAT_WEEKLY:
-            # MVP 约定：单选存入（多选 UI 保留，v1.x 扩展）
-            selected = next(
-                (b.property("weekday") for b in self.weekday_buttons if b.isChecked()), None
-            )
-            data["weekday"] = selected
-        elif repeat == REPEAT_MONTHLY:
-            selected = next((int(b.text()) for b in self.month_day_buttons if b.isChecked()), None)
-            data["month_day"] = selected
-
+            data["day"] = self._to_pydate(self.date_picker.getDate())
+        else:
+            # 每日/每周/每月：开始日期 + 结束日期，创建时一次性展开（T19/T24）
+            data["day"] = self._to_pydate(self.start_picker.getDate())
+            data["end_date"] = self._to_pydate(self.end_picker.getDate())
         return data
 
     def edit_item_id(self) -> int | None:

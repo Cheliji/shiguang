@@ -234,9 +234,7 @@ class CalendarPopup(QWidget):
         painter.setPen(QColor(Color.TEXT_SECONDARY))
         top = card.top() + _WEEKDAY_TOP
         for col, name in enumerate(_WEEKDAY_HEADERS):
-            cell = QRectF(
-                card.left() + _PAD + col * (_CELL + _GAP), top, _CELL, _WEEKDAY_HEIGHT
-            )
+            cell = QRectF(card.left() + _PAD + col * (_CELL + _GAP), top, _CELL, _WEEKDAY_HEIGHT)
             painter.drawText(cell, Qt.AlignmentFlag.AlignCenter, name)
 
     def _paint_days(self, painter: QPainter) -> None:

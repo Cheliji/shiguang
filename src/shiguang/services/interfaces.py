@@ -56,11 +56,15 @@ class TaskServiceInterface(QObject):
         day: date | None = None,
         repeat: str = "none",
         end_date: date | None = None,
-        weekday: int | None = None,
-        month_day: int | None = None,
         delay_policy: str = "default",
     ) -> TodoItem:
-        """创建代办。name / standard 必填（去空白后非空），否则抛 ValueError。"""
+        """创建代办。name / standard 必填（去空白后非空），否则抛 ValueError。
+
+        repeat = "none"：day 为计划日期，生成一条记录。
+        repeat = "daily" / "weekly" / "monthly"：day 为开始日期，end_date 必填；
+        按 [day, end_date] 创建时一次性展开为多条独立记录（共享同一系列标识），
+        返回首条记录；end_date 早于 day 或展开条数超上限时抛 ValueError。
+        """
         raise NotImplementedError
 
     def update_todo(self, task_id: int, **fields) -> TodoItem:

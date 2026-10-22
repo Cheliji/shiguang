@@ -36,15 +36,66 @@ def test_create_requires_name_and_standard(service):
         service.create_todo(name="名称", standard=" ")
 
 
-def test_create_repeat_fields(service):
-    item = service.create_todo(
+def test_create_repeat_expands_series(service):
+    """创建时展开：每日代办一次生成区间内全部独立记录，共享系列标识。"""
+    today = date.today()
+    first = service.create_todo(
         name="背单词",
         standard="20 个",
         repeat=REPEAT_DAILY,
-        end_date=date.today() + timedelta(days=7),
+        day=today,
+        end_date=today + timedelta(days=7),
     )
-    assert item.repeat == REPEAT_DAILY
-    assert item.end_date is not None
+    assert first.repeat == REPEAT_DAILY
+    series = service.list_pending()
+    assert len(series) == 8
+    assert [i.date for i in series] == [today + timedelta(days=i) for i in range(8)]
+    assert len({i.series_id for i in series}) == 1  # 同一系列
+    assert all(i.series_id for i in series)
+
+
+def test_create_repeat_requires_end_date(service):
+    with pytest.raises(ValueError):
+        service.create_todo(name="背单词", standard="20 个", repeat=REPEAT_DAILY, day=date.today())
+
+
+def test_create_repeat_invalid_range_raises(service):
+    today = date.today()
+    with pytest.raises(ValueError):
+        service.create_todo(
+            name="a",
+            standard="s",
+            repeat=REPEAT_DAILY,
+            day=today,
+            end_date=today - timedelta(days=1),
+        )
+    with pytest.raises(ValueError):
+        service.create_todo(
+            name="a",
+            standard="s",
+            repeat=REPEAT_DAILY,
+            day=today,
+            end_date=today + timedelta(days=401),
+        )
+    assert service.list_pending() == []  # 校验失败无残留
+
+
+def test_series_records_are_independent(service):
+    """系列内记录互不影响：归档/删除一条不影响其余记录。"""
+    today = date.today()
+    first = service.create_todo(
+        name="背单词",
+        standard="20 个",
+        repeat=REPEAT_DAILY,
+        day=today,
+        end_date=today + timedelta(days=2),
+    )
+    service.archive(first.id, ArchiveInput(duration=10, score=5))
+    remaining = service.list_pending()
+    assert len(remaining) == 2
+    assert all(i.status == "pending" for i in remaining)
+    service.delete_todo(remaining[0].id)
+    assert len(service.list_pending()) == 1
 
 
 def test_create_emits_changed(service):

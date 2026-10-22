@@ -1,17 +1,20 @@
-"""内存 Mock 代办服务（阶段二 UI 开发用）。
+"""内存 Mock 代办服务（阶段二/三 UI 开发用）。
 
-简化规则（与真实实现的差异，真实规则见 T19/T20）：
-- 每日/每周/每月重复：不做实例生成，创建时直接以今天为计划日期落一条数据，
-  卡片带重复标签即可满足 UI 演示；
+简化规则（与真实实现的差异，真实规则见 T18–T21）：
+- 重复代办创建时按真实规则一次性展开为多条独立记录（与真实实现一致，
+  共用 domain/rules.py 的 expand_dates 纯函数）；
 - 不做自动延期扫描，逾期数据为预置假数据；
 - 数据存内存，重启即失。
 """
 
+import uuid
 from datetime import date, datetime, timedelta
 
+from shiguang.domain.rules import expand_dates
 from shiguang.services.dto import (
     DELAY_AUTO,
     REPEAT_DAILY,
+    REPEAT_NONE,
     STATUS_ARCHIVED,
     STATUS_PENDING,
     ArchiveInput,
@@ -33,6 +36,36 @@ def _validate_archive(data: ArchiveInput) -> None:
         raise ValueError("评分必须为 1-5")
     if data.duration <= 0:
         raise ValueError("用时必须大于 0 分钟")
+
+
+def _expand_seed(
+    name: str,
+    standard: str,
+    repeat: str,
+    start: date,
+    end: date,
+    archived_dates: dict[date, tuple[int, int, str]] | None = None,
+) -> list[TodoItem]:
+    """生成一个重复系列的种子记录（共享系列标识）。
+
+    archived_dates：{日期: (评分, 用时, 总结)}，命中的日期生成已归档记录，
+    用于演示"系列内各记录归档互不影响"。
+    """
+    series_id = uuid.uuid4().hex
+    items = []
+    for plan_date in expand_dates(repeat, start, end):
+        item = TodoItem(
+            id=0, name=name, standard=standard, date=plan_date, repeat=repeat, series_id=series_id
+        )
+        if archived_dates and plan_date in archived_dates:
+            score, duration, summary = archived_dates[plan_date]
+            item.status = STATUS_ARCHIVED
+            item.score = score
+            item.duration = duration
+            item.summary = summary
+            item.archived_at = datetime.combine(plan_date, datetime.min.time()).replace(hour=8)
+        items.append(item)
+    return items
 
 
 class MockTaskService(TaskServiceInterface):
@@ -69,13 +102,15 @@ class MockTaskService(TaskServiceInterface):
                 description="准备读书笔记，用于周末分享",
                 date=today,
             ),
-            # 每日重复代办（含 end_date 示例）
-            s(
+            # 每日重复系列（创建时已展开为多条独立记录，共享系列标识）：
+            # 昨天起每天一条，其中昨天那条已归档——演示系列内各记录互不影响
+            *_expand_seed(
                 name="背 20 个英语单词",
                 standard="在 App 内完成今日词卡，正确率 ≥ 80%",
-                date=today,
-                end_date=today + timedelta(days=30),
                 repeat=REPEAT_DAILY,
+                start=yesterday,
+                end=today + timedelta(days=5),
+                archived_dates={yesterday: (5, 10, "今天状态不错，全对")},
             ),
             # 逾期代办（自动延期过一次）
             s(
@@ -164,26 +199,30 @@ class MockTaskService(TaskServiceInterface):
         day: date | None = None,
         repeat: str = "none",
         end_date: date | None = None,
-        weekday: int | None = None,
-        month_day: int | None = None,
         delay_policy: str = "default",
     ) -> TodoItem:
         _validate_create(name, standard)
-        item = TodoItem(
-            id=0,
-            name=name.strip(),
-            standard=standard.strip(),
-            description=description.strip(),
-            date=day,
-            repeat=repeat,
-            end_date=end_date,
-            weekday=weekday,
-            month_day=month_day,
-            delay_policy=delay_policy,
-        )
-        self._append(item)
+        base = {
+            "name": name.strip(),
+            "standard": standard.strip(),
+            "description": description.strip(),
+            "repeat": repeat,
+            "delay_policy": delay_policy,
+        }
+        if repeat == REPEAT_NONE:
+            first = self._append(TodoItem(id=0, date=day, **base))
+        else:
+            # 创建时一次性展开（与真实实现同一规则）：[day, end_date] 逐条独立记录
+            if day is None or end_date is None:
+                raise ValueError("重复代办必须选择开始日期与结束日期")
+            series_id = uuid.uuid4().hex
+            first = None
+            for plan_date in expand_dates(repeat, day, end_date):
+                item = self._append(TodoItem(id=0, date=plan_date, series_id=series_id, **base))
+                if first is None:
+                    first = item
         self.changed.emit()
-        return item
+        return first
 
     def update_todo(self, task_id: int, **fields) -> TodoItem:
         item = self._get(task_id)
@@ -200,10 +239,6 @@ class MockTaskService(TaskServiceInterface):
         for key in (
             "description",
             "date",
-            "repeat",
-            "end_date",
-            "weekday",
-            "month_day",
             "delay_policy",
         ):
             if key in fields:

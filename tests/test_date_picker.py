@@ -148,9 +148,7 @@ def test_only_selected_date_highlighted(qtbot):
     popup.reset(QDate(2030, 5, 20))
 
     highlighted = [
-        b._date.toString("yyyy-MM-dd")
-        for b in popup._day_buttons
-        if b._date == popup._selected
+        b._date.toString("yyyy-MM-dd") for b in popup._day_buttons if b._date == popup._selected
     ]
     assert highlighted == ["2030-05-20"]
     assert popup._selected == QDate(2030, 5, 20)

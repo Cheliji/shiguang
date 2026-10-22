@@ -249,13 +249,11 @@ class TodoPage(QWidget):
         dialog = TodoDialog(self.window())
         if dialog.exec():
             data = dialog.get_data()
-            if data["repeat"] != "none" and "day" not in data:
-                data["day"] = date.today()
             try:
                 self._service.create_todo(**data)
-                InfoBar.success(
-                    "成功", "代办已创建", parent=self.window(), position=InfoBarPosition.TOP
-                )
+                count = dialog.expanded_count()
+                message = f"已创建，共生成 {count} 条代办" if count else "代办已创建"
+                InfoBar.success("成功", message, parent=self.window(), position=InfoBarPosition.TOP)
             except ValueError as e:
                 InfoBar.error("失败", str(e), parent=self.window(), position=InfoBarPosition.TOP)
 
