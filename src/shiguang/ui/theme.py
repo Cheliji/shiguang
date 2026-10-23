@@ -52,6 +52,13 @@ class Color:
     STAR = "#FBBF24"
     STAR_EMPTY = "#D1D5DB"
 
+    # 重要程度五色（红 > 橙 > 蓝 > 绿 > 灰，§2.1.3）
+    PRIORITY_RED = "#EF4444"
+    PRIORITY_ORANGE = "#F59E0B"
+    PRIORITY_BLUE = "#3B82F6"
+    PRIORITY_GREEN = "#10B981"
+    PRIORITY_GRAY = "#9CA3AF"
+
 
 class FontSize:
     """字号阶梯（§2.2），单位 px。"""

@@ -12,7 +12,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import date, datetime
 
-from shiguang.domain.enums import DelayPolicy, Repeat, TaskStatus
+from shiguang.domain.enums import DelayPolicy, Priority, Repeat, TaskStatus
 
 # 重复周期
 REPEAT_NONE = Repeat.NONE.value
@@ -25,6 +25,21 @@ REPEAT_LABELS = {
     REPEAT_DAILY: "每日",
     REPEAT_WEEKLY: "每周",
     REPEAT_MONTHLY: "每月",
+}
+
+# 重要程度五色（红 > 橙 > 蓝 > 绿 > 灰，递减；灰=普通）
+PRIORITY_RED = Priority.RED.value
+PRIORITY_ORANGE = Priority.ORANGE.value
+PRIORITY_BLUE = Priority.BLUE.value
+PRIORITY_GREEN = Priority.GREEN.value
+PRIORITY_GRAY = Priority.GRAY.value
+PRIORITY_CHOICES = (PRIORITY_RED, PRIORITY_ORANGE, PRIORITY_BLUE, PRIORITY_GREEN, PRIORITY_GRAY)
+PRIORITY_LABELS = {
+    PRIORITY_RED: "重要",
+    PRIORITY_ORANGE: "较重要",
+    PRIORITY_BLUE: "中等",
+    PRIORITY_GREEN: "较低",
+    PRIORITY_GRAY: "普通",
 }
 
 # 延期策略
@@ -53,6 +68,7 @@ class TodoItem:
     description: str = ""
     date: date | None = None
     repeat: str = REPEAT_NONE  # 创建时选择的重复规则；repeat != none 的记录属某个重复系列
+    priority: str = PRIORITY_GRAY  # 重要程度五色：red/orange/blue/green/gray
     series_id: str | None = None  # 同一次创建时展开生成的记录共享同一系列标识
     delay_policy: str = DELAY_DEFAULT
     delay_count: int = 0

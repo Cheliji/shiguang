@@ -56,6 +56,7 @@ class TaskServiceInterface(QObject):
         day: date | None = None,
         repeat: str = "none",
         end_date: date | None = None,
+        priority: str = "gray",
         delay_policy: str = "default",
     ) -> TodoItem:
         """创建代办。name / standard 必填（去空白后非空），否则抛 ValueError。

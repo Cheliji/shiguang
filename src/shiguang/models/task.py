@@ -15,7 +15,7 @@ from datetime import date, datetime
 from sqlalchemy import JSON, Date, DateTime, Index, Integer, String, Text, func
 from sqlalchemy.orm import Mapped, mapped_column
 
-from shiguang.domain.enums import DelayPolicy, Period, Repeat, TaskKind, TaskStatus
+from shiguang.domain.enums import DelayPolicy, Period, Priority, Repeat, TaskKind, TaskStatus
 from shiguang.models.base import Base
 
 
@@ -32,6 +32,9 @@ class Task(Base):
     series_id: Mapped[str | None] = mapped_column(
         String(36)
     )  # 同一次重复展开生成的记录共享（UUID）；不重复为 NULL
+    priority: Mapped[str] = mapped_column(
+        String(10), default=Priority.GRAY.value, server_default=Priority.GRAY.value
+    )  # 重要程度五色：red/orange/blue/green/gray（递减，gray=普通）
     date: Mapped[date] = mapped_column(Date)  # 计划日期（每条记录对应一个具体日期）
     delay_policy: Mapped[str] = mapped_column(
         String(10), default=DelayPolicy.DEFAULT.value, server_default=DelayPolicy.DEFAULT.value

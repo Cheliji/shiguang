@@ -179,6 +179,31 @@ def test_delay_policy_default_and_auto(qtbot, window):
     assert dialog.get_data()["delay_policy"] == "auto"
 
 
+def test_priority_default_gray(qtbot, window):
+    """重要程度默认选中普通（灰），get_data 带 priority。"""
+    dialog = TodoDialog(window)
+    qtbot.addWidget(dialog)
+    _fill(dialog)
+    assert dialog._selected_priority() == "gray"
+    assert dialog.priority_text.text() == "普通"
+    assert dialog.get_data()["priority"] == "gray"
+
+
+def test_priority_select_and_prefill(qtbot, window):
+    """选择红档 + 编辑回显。"""
+    dialog = TodoDialog(window)
+    qtbot.addWidget(dialog)
+    dialog.priority_buttons["red"].setChecked(True)
+    assert dialog.priority_text.text() == "重要"
+    assert dialog.get_data()["priority"] == "red"
+
+    item = TodoItem(id=7, name="n", standard="s", priority="blue")
+    dialog2 = TodoDialog(window, item=item)
+    qtbot.addWidget(dialog2)
+    assert dialog2._selected_priority() == "blue"
+    assert dialog2.priority_text.text() == "中等"
+
+
 def test_goal_placeholder_disabled(qtbot, window):
     dialog = TodoDialog(window)
     qtbot.addWidget(dialog)

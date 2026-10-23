@@ -19,6 +19,7 @@ from PySide6.QtWidgets import (
     QButtonGroup,
     QHBoxLayout,
     QLabel,
+    QPushButton,
     QRadioButton,
     QStackedWidget,
     QToolButton,
@@ -29,6 +30,9 @@ from qfluentwidgets import LineEdit, MessageBoxBase
 
 from shiguang.domain.rules import expand_dates
 from shiguang.services.dto import (
+    PRIORITY_CHOICES,
+    PRIORITY_GRAY,
+    PRIORITY_LABELS,
     REPEAT_DAILY,
     REPEAT_LABELS,
     REPEAT_MONTHLY,
@@ -133,6 +137,9 @@ class TodoDialog(MessageBoxBase):
         # 2. 重复周期 + 计划日期（并排两列）+ 联动展开区
         form_layout.addLayout(self._build_repeat_area())
 
+        # 2.5 重要程度（五色单选，v1.4 §4.3.3）
+        form_layout.addLayout(self._build_priority_area())
+
         # 3. 延期策略
         form_layout.addLayout(self._build_delay_area())
 
@@ -180,6 +187,7 @@ class TodoDialog(MessageBoxBase):
             self.desc_edit.setPlainText(item.description or "")
             self.standard_edit.setPlainText(item.standard or "")
             self._prefill_repeat(item)
+            self._prefill_priority(item)
             if item.delay_policy in self.delay_buttons:
                 self.delay_buttons[item.delay_policy].setChecked(True)
         self._update_guide()
@@ -397,6 +405,71 @@ class TodoDialog(MessageBoxBase):
                 return value
         return "default"
 
+    # ---------- 重要程度（五色单选，UI v1.4 §4.3.3） ----------
+    def _build_priority_area(self) -> QVBoxLayout:
+        area = QVBoxLayout()
+        area.setContentsMargins(0, 0, 0, 0)
+        area.setSpacing(Space.XS)
+        area.addLayout(self._field_label("重要程度"))
+
+        row = QHBoxLayout()
+        row.setSpacing(Space.MD)
+
+        self.priority_buttons: dict[str, QPushButton] = {}
+        self.priority_group = QButtonGroup(self.widget)
+        self.priority_group.setExclusive(True)
+        colors = {
+            PRIORITY_CHOICES[0]: Color.PRIORITY_RED,
+            PRIORITY_CHOICES[1]: Color.PRIORITY_ORANGE,
+            PRIORITY_CHOICES[2]: Color.PRIORITY_BLUE,
+            PRIORITY_CHOICES[3]: Color.PRIORITY_GREEN,
+            PRIORITY_CHOICES[4]: Color.PRIORITY_GRAY,
+        }
+        for value in PRIORITY_CHOICES:
+            button = QPushButton(self.widget)
+            button.setCheckable(True)
+            button.setFixedSize(20, 20)
+            button.setCursor(Qt.CursorShape.PointingHandCursor)
+            button.setToolTip(PRIORITY_LABELS[value])
+            color = colors[value]
+            button.setStyleSheet(
+                f"QPushButton {{ background: {color}; border: 1px solid transparent;"
+                " border-radius: 10px; }"
+                f"QPushButton:checked {{ border: 2px solid {Color.TEXT_PRIMARY}; }}"
+                f"QPushButton:hover {{ border: 2px solid {Color.TEXT_SECONDARY}; }}"
+            )
+            self.priority_group.addButton(button)
+            self.priority_buttons[value] = button
+            row.addWidget(button)
+
+        self.priority_text = QLabel(PRIORITY_LABELS[PRIORITY_GRAY])
+        self.priority_text.setStyleSheet(
+            f"color: {Color.TEXT_SECONDARY}; font-size: {FontSize.AUXILIARY}px;"
+        )
+        row.addWidget(self.priority_text)
+        row.addStretch(1)
+
+        self.priority_buttons[PRIORITY_GRAY].setChecked(True)
+        for value in PRIORITY_CHOICES:
+            self.priority_buttons[value].toggled.connect(self._on_priority_toggled)
+        area.addLayout(row)
+        return area
+
+    def _on_priority_toggled(self, checked: bool) -> None:
+        if checked:
+            self.priority_text.setText(PRIORITY_LABELS[self._selected_priority()])
+
+    def _selected_priority(self) -> str:
+        for value, button in self.priority_buttons.items():
+            if button.isChecked():
+                return value
+        return PRIORITY_GRAY
+
+    def _prefill_priority(self, item: TodoItem) -> None:
+        value = item.priority if item.priority in self.priority_buttons else PRIORITY_GRAY
+        self.priority_buttons[value].setChecked(True)
+        self.priority_text.setText(PRIORITY_LABELS[value])
+
     # ---------- 关联目标（T12，MVP 禁用占位） ----------
     def _build_goal_area(self) -> QVBoxLayout:
         area = QVBoxLayout()
@@ -510,6 +583,7 @@ class TodoDialog(MessageBoxBase):
             "name": self.name_edit.text().strip(),
             "description": self.desc_edit.toPlainText().strip(),
             "standard": self.standard_edit.toPlainText().strip(),
+            "priority": self._selected_priority(),
             "delay_policy": self._selected_delay_policy(),
         }
         if self._editing_repeat:

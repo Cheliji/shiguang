@@ -13,6 +13,10 @@ from datetime import date, datetime, timedelta
 from shiguang.domain.rules import expand_dates
 from shiguang.services.dto import (
     DELAY_AUTO,
+    PRIORITY_BLUE,
+    PRIORITY_GREEN,
+    PRIORITY_ORANGE,
+    PRIORITY_RED,
     REPEAT_DAILY,
     REPEAT_NONE,
     STATUS_ARCHIVED,
@@ -44,6 +48,7 @@ def _expand_seed(
     repeat: str,
     start: date,
     end: date,
+    priority: str = "gray",
     archived_dates: dict[date, tuple[int, int, str]] | None = None,
 ) -> list[TodoItem]:
     """生成一个重复系列的种子记录（共享系列标识）。
@@ -55,7 +60,13 @@ def _expand_seed(
     items = []
     for plan_date in expand_dates(repeat, start, end):
         item = TodoItem(
-            id=0, name=name, standard=standard, date=plan_date, repeat=repeat, series_id=series_id
+            id=0,
+            name=name,
+            standard=standard,
+            date=plan_date,
+            repeat=repeat,
+            priority=priority,
+            series_id=series_id,
         )
         if archived_dates and plan_date in archived_dates:
             score, duration, summary = archived_dates[plan_date]
@@ -94,6 +105,7 @@ class MockTaskService(TaskServiceInterface):
                 standard="收件箱清空，桌面仅保留本周项目文件夹",
                 description="顺手把下载目录也清理一下",
                 date=today,
+                priority=PRIORITY_BLUE,
             ),
             # 带完成标准 + 描述的今日代办
             s(
@@ -101,6 +113,7 @@ class MockTaskService(TaskServiceInterface):
                 standard="写 3 条读书笔记，能复述核心观点",
                 description="准备读书笔记，用于周末分享",
                 date=today,
+                priority=PRIORITY_RED,
             ),
             # 每日重复系列（创建时已展开为多条独立记录，共享系列标识）：
             # 昨天起每天一条，其中昨天那条已归档——演示系列内各记录互不影响
@@ -110,6 +123,7 @@ class MockTaskService(TaskServiceInterface):
                 repeat=REPEAT_DAILY,
                 start=yesterday,
                 end=today + timedelta(days=5),
+                priority=PRIORITY_ORANGE,
                 archived_dates={yesterday: (5, 10, "今天状态不错，全对")},
             ),
             # 逾期代办（自动延期过一次）
@@ -130,6 +144,7 @@ class MockTaskService(TaskServiceInterface):
                 duration=30,
                 summary="今天状态不错，最后一公里提速了",
                 archived_at=datetime.combine(today, datetime.min.time()).replace(hour=7, minute=30),
+                priority=PRIORITY_GREEN,
             ),
             # 已归档代办（昨天完成）
             s(
@@ -199,6 +214,7 @@ class MockTaskService(TaskServiceInterface):
         day: date | None = None,
         repeat: str = "none",
         end_date: date | None = None,
+        priority: str = "gray",
         delay_policy: str = "default",
     ) -> TodoItem:
         _validate_create(name, standard)
@@ -207,6 +223,7 @@ class MockTaskService(TaskServiceInterface):
             "standard": standard.strip(),
             "description": description.strip(),
             "repeat": repeat,
+            "priority": priority,
             "delay_policy": delay_policy,
         }
         if repeat == REPEAT_NONE:
@@ -239,6 +256,7 @@ class MockTaskService(TaskServiceInterface):
         for key in (
             "description",
             "date",
+            "priority",
             "delay_policy",
         ):
             if key in fields:

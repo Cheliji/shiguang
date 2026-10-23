@@ -17,9 +17,18 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from shiguang.services.dto import REPEAT_LABELS, STATUS_ARCHIVED, TodoItem
+from shiguang.services.dto import PRIORITY_GRAY, REPEAT_LABELS, STATUS_ARCHIVED, TodoItem
 from shiguang.ui.icons import colored_icon
 from shiguang.ui.theme import Color, FontSize, Space
+
+# 重要程度值 → 色点颜色（UI v1.4 §2.1.3）；灰档不渲染
+_PRIORITY_COLORS = {
+    "red": Color.PRIORITY_RED,
+    "orange": Color.PRIORITY_ORANGE,
+    "blue": Color.PRIORITY_BLUE,
+    "green": Color.PRIORITY_GREEN,
+    "gray": Color.PRIORITY_GRAY,
+}
 
 
 class CheckBox(QWidget):
@@ -149,7 +158,16 @@ class TaskCard(QFrame):
 
         self.name_label = ElideLabel(self)
         self.name_label.setStyleSheet(f"font-size: {FontSize.CARD_TITLE}px; font-weight: 500;")
-        content.addWidget(self.name_label)
+
+        # 名称行：重要程度色点 + 名称（普通/灰档不渲染色点，§5.1.2）
+        name_row = QHBoxLayout()
+        name_row.setSpacing(Space.XS)
+        self.priority_dot = QLabel(self)
+        self.priority_dot.setFixedSize(8, 8)
+        self.priority_dot.hide()
+        name_row.addWidget(self.priority_dot, 0, Qt.AlignmentFlag.AlignVCenter)
+        name_row.addWidget(self.name_label, 1)
+        content.addLayout(name_row)
 
         standard_row = QHBoxLayout()
         standard_row.setSpacing(Space.XS)
@@ -196,6 +214,7 @@ class TaskCard(QFrame):
         overdue = item.is_overdue()
 
         self.name_label.set_full_text(item.name)
+        self._render_priority_dot(item)
         name_style = f"font-size: {FontSize.CARD_TITLE}px; font-weight: 500;"
         if archived:
             name_style += f" color: {Color.TEXT_SECONDARY}; text-decoration: line-through;"
@@ -232,6 +251,20 @@ class TaskCard(QFrame):
             self.menu_button.show()
 
         self._apply_style(overdue=overdue)
+
+    def _render_priority_dot(self, item: TodoItem) -> None:
+        """名称前重要程度色点；普通（灰）档不渲染。"""
+        if item.priority not in _PRIORITY_COLORS or item.priority == PRIORITY_GRAY:
+            self.priority_dot.hide()
+            return
+        color = _PRIORITY_COLORS[item.priority]
+        self.priority_dot.setStyleSheet(f"background: {color}; border-radius: 4px; border: none;")
+        self.priority_dot.setToolTip(
+            {"red": "重要", "orange": "较重要", "blue": "中等", "green": "较低"}.get(
+                item.priority, ""
+            )
+        )
+        self.priority_dot.show()
 
     def _render_meta(self, item: TodoItem, archived: bool, overdue: bool) -> None:
         # 清空旧元信息

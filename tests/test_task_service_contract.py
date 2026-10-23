@@ -7,7 +7,7 @@ from datetime import date, timedelta
 
 import pytest
 
-from shiguang.services.dto import REPEAT_DAILY, ArchiveInput
+from shiguang.services.dto import PRIORITY_RED, REPEAT_DAILY, ArchiveInput
 from shiguang.services.mock.mock_task_service import MockTaskService
 
 
@@ -26,7 +26,19 @@ def test_create_minimal(service):
     assert item.name == "写周报"  # 去空白
     assert item.standard == "发出并收到确认"
     assert item.status == "pending"
+    assert item.priority == "gray"  # 默认普通（灰）
     assert item in service.list_pending()
+
+
+def test_create_with_priority(service):
+    item = service.create_todo(name="a", standard="s", priority=PRIORITY_RED)
+    assert item.priority == PRIORITY_RED
+
+
+def test_update_priority(service):
+    item = service.create_todo(name="a", standard="s")
+    service.update_todo(item.id, priority=PRIORITY_RED)
+    assert service.list_pending()[0].priority == PRIORITY_RED
 
 
 def test_create_requires_name_and_standard(service):

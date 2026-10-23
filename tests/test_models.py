@@ -43,6 +43,7 @@ def test_create_pending_defaults(factory):
     assert task.delay_policy == "default"
     assert task.delay_count == 0
     assert task.series_id is None
+    assert task.priority == "gray"  # 重要程度默认普通（灰）
     # 归档字段待办时为空
     assert task.duration is None
     assert task.score is None
@@ -109,6 +110,7 @@ def test_upgrade_head_creates_tasks_table(tmp_path):
         "period",
         "repeat",
         "series_id",
+        "priority",
         "date",
         "delay_policy",
         "delay_count",

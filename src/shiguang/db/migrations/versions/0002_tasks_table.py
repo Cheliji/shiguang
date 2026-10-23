@@ -30,6 +30,7 @@ def upgrade() -> None:
         sa.Column("period", sa.String(length=10), nullable=False),
         sa.Column("repeat", sa.String(length=10), server_default="none", nullable=False),
         sa.Column("series_id", sa.String(length=36), nullable=True),
+        sa.Column("priority", sa.String(length=10), server_default="gray", nullable=False),
         sa.Column("date", sa.Date(), nullable=False),
         sa.Column("delay_policy", sa.String(length=10), server_default="default", nullable=False),
         sa.Column("delay_count", sa.Integer(), server_default="0", nullable=False),

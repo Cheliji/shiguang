@@ -45,3 +45,13 @@ class TaskStatus(StrEnum):
 
     PENDING = "pending"
     ARCHIVED = "archived"
+
+
+class Priority(StrEnum):
+    """重要程度五色标识（产品文档 v0.6）：红 > 橙 > 蓝 > 绿 > 灰。"""
+
+    RED = "red"
+    ORANGE = "orange"
+    BLUE = "blue"
+    GREEN = "green"
+    GRAY = "gray"

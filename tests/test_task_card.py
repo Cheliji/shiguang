@@ -53,6 +53,24 @@ def test_overdue_style(qtbot):
     assert Color_DANGER_in(card.styleSheet())
 
 
+def test_priority_dot_visibility(qtbot):
+    """非普通档显示色点；普通（灰）档不渲染。"""
+    from shiguang.ui.theme import Color
+
+    card = TaskCard()
+    qtbot.addWidget(card)
+
+    card.set_data(_item(date=date.today(), priority="gray"))
+    assert card.priority_dot.isHidden()
+
+    card.set_data(_item(date=date.today(), priority="red"))
+    assert not card.priority_dot.isHidden()
+    assert Color.PRIORITY_RED in card.priority_dot.styleSheet()
+
+    card.set_data(_item(date=date.today(), priority=None))
+    assert card.priority_dot.isHidden()
+
+
 def Color_DANGER_in(stylesheet: str) -> bool:
     from shiguang.ui.theme import Color
 
