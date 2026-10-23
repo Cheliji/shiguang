@@ -163,7 +163,7 @@ class TaskCard(QFrame):
         name_row = QHBoxLayout()
         name_row.setSpacing(Space.XS)
         self.priority_dot = QLabel(self)
-        self.priority_dot.setFixedSize(8, 8)
+        self.priority_dot.setFixedSize(10, 10)
         self.priority_dot.hide()
         name_row.addWidget(self.priority_dot, 0, Qt.AlignmentFlag.AlignVCenter)
         name_row.addWidget(self.name_label, 1)
@@ -250,7 +250,7 @@ class TaskCard(QFrame):
             self.right_label.hide()
             self.menu_button.show()
 
-        self._apply_style(overdue=overdue)
+        self._apply_style(overdue=overdue, priority=item.priority)
 
     def _render_priority_dot(self, item: TodoItem) -> None:
         """名称前重要程度色点；普通（灰）档不渲染。"""
@@ -258,7 +258,7 @@ class TaskCard(QFrame):
             self.priority_dot.hide()
             return
         color = _PRIORITY_COLORS[item.priority]
-        self.priority_dot.setStyleSheet(f"background: {color}; border-radius: 4px; border: none;")
+        self.priority_dot.setStyleSheet(f"background: {color}; border-radius: 5px; border: none;")
         self.priority_dot.setToolTip(
             {"red": "重要", "orange": "较重要", "blue": "中等", "green": "较低"}.get(
                 item.priority, ""
@@ -299,13 +299,18 @@ class TaskCard(QFrame):
         self.meta_row.addStretch(1)
 
     # ---------- 样式 ----------
-    def _apply_style(self, overdue: bool) -> None:
+    def _apply_style(self, overdue: bool, priority: str | None = None) -> None:
         if overdue:
+            # 逾期态优先：左侧红色竖条 + 浅红底（重要程度色条让位）
             bg = "#FFF5F5"
             border_left = f"border-left: 4px solid {Color.DANGER};"
         else:
             bg = Color.SURFACE
-            border_left = "border-left: 4px solid transparent;"
+            color = _PRIORITY_COLORS.get(priority)
+            if color and priority != PRIORITY_GRAY:
+                border_left = f"border-left: 4px solid {color};"
+            else:
+                border_left = "border-left: 4px solid transparent;"
         self.setStyleSheet(f"TaskCard {{ background: {bg}; border-radius: 12px; {border_left} }}")
 
     def _set_shadow(self, hover: bool) -> None:

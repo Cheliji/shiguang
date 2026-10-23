@@ -24,6 +24,7 @@ from shiguang.services.dto import (
     ArchiveInput,
     TodaySummary,
     TodoItem,
+    priority_rank,
 )
 from shiguang.services.interfaces import TaskServiceInterface
 
@@ -179,13 +180,13 @@ class MockTaskService(TaskServiceInterface):
     def list_today(self, day: date) -> list[TodoItem]:
         return sorted(
             (i for i in self._items if i.status == STATUS_PENDING and i.date == day),
-            key=lambda i: i.id,
+            key=lambda i: (priority_rank(i.priority), i.id),
         )
 
     def list_pending(self) -> list[TodoItem]:
         return sorted(
             (i for i in self._items if i.status == STATUS_PENDING),
-            key=lambda i: (i.date or date.max, i.id),
+            key=lambda i: (priority_rank(i.priority), i.date or date.max, i.id),
         )
 
     def list_overdue(self) -> list[TodoItem]:

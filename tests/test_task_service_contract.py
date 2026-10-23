@@ -127,6 +127,32 @@ def test_list_today(service):
     assert [i.name for i in service.list_today(today)] == ["今日事"]
 
 
+def test_list_sorted_by_priority(service):
+    """待办列表按重要程度降序（红>橙>蓝>绿>灰），同档按日期升序。"""
+    from shiguang.services.dto import PRIORITY_BLUE, PRIORITY_GRAY, PRIORITY_RED
+
+    today = date.today()
+    service.create_todo(name="灰", standard="s", day=today, priority=PRIORITY_GRAY)
+    service.create_todo(
+        name="红", standard="s", day=today + timedelta(days=1), priority=PRIORITY_RED
+    )
+    service.create_todo(name="蓝", standard="s", day=today, priority=PRIORITY_BLUE)
+
+    # 红（最高）在前，即使日期靠后；灰在最后
+    assert [i.name for i in service.list_pending()] == ["红", "蓝", "灰"]
+
+    # 今日视图：同一天内按重要程度
+    assert [i.name for i in service.list_today(today)] == ["蓝", "灰"]
+
+
+def test_list_pending_same_priority_by_date(service):
+    """同档按计划日期升序。"""
+    today = date.today()
+    service.create_todo(name="后", standard="s", day=today + timedelta(days=1))
+    service.create_todo(name="前", standard="s", day=today)
+    assert [i.name for i in service.list_pending()] == ["前", "后"]
+
+
 def test_today_summary(service):
     today = date.today()
     a = service.create_todo(name="a", standard="s", day=today)

@@ -24,11 +24,11 @@ class TaskServiceInterface(QObject):
 
     # ----- 查询 -----
     def list_today(self, day: date) -> list[TodoItem]:
-        """指定日期的待办代办（pending，按计划日期升序）。"""
+        """指定日期的待办代办（pending），按重要程度降序（红>橙>蓝>绿>灰），同档按 id 升序。"""
         raise NotImplementedError
 
     def list_pending(self) -> list[TodoItem]:
-        """全部待办代办（按计划日期升序）。"""
+        """全部待办代办，按重要程度降序，同档按计划日期升序、再按 id 升序。"""
         raise NotImplementedError
 
     def list_overdue(self) -> list[TodoItem]:

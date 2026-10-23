@@ -41,6 +41,17 @@ PRIORITY_LABELS = {
     PRIORITY_GREEN: "较低",
     PRIORITY_GRAY: "普通",
 }
+# 重要程度排序：下标越小越靠前（红 > 橙 > 蓝 > 绿 > 灰）
+PRIORITY_ORDER = PRIORITY_CHOICES
+
+
+def priority_rank(value: str) -> int:
+    """重要程度排序权重（0 最靠前）；未知值按最低优先级处理。"""
+    try:
+        return PRIORITY_ORDER.index(value)
+    except ValueError:
+        return len(PRIORITY_ORDER)
+
 
 # 延期策略
 DELAY_DEFAULT = DelayPolicy.DEFAULT.value

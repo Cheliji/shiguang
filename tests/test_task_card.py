@@ -62,10 +62,12 @@ def test_priority_dot_visibility(qtbot):
 
     card.set_data(_item(date=date.today(), priority="gray"))
     assert card.priority_dot.isHidden()
+    assert "transparent" in card.styleSheet()  # 灰档无色条
 
     card.set_data(_item(date=date.today(), priority="red"))
     assert not card.priority_dot.isHidden()
     assert Color.PRIORITY_RED in card.priority_dot.styleSheet()
+    assert Color.PRIORITY_RED in card.styleSheet()  # 左侧色条同色
 
     card.set_data(_item(date=date.today(), priority=None))
     assert card.priority_dot.isHidden()
