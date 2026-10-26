@@ -1,8 +1,7 @@
-"""基于 SQLite 的真实代办服务（T18）。
+"""基于 SQLite 的真实代办服务（T18 起）。
 
 与 Mock 的差异 / 本阶段有意不做的部分（按任务文档，后续任务补齐）：
 - 重复代办（repeat != "none"）暂以校验错误拒绝 —— T19 接入创建时展开生成；
-- 归档入口暂抛 NotImplementedError —— T21 接入（单行更新）；
 - 自动延期扫描 —— T20 接入。
 
 行为约定（与 Mock 对齐，契约测试共用同一套断言）：
@@ -10,6 +9,7 @@
 - day 为空时计划日期默认为今天（repeat = "none"）；
 - 列表排序：按重要程度降序（红>橙>蓝>绿>灰），同档按日期/id 升序；
 - 已归档记录不可编辑/删除；不存在的 id 抛 TaskNotFoundError；
+- 归档 = 单行更新：状态翻转 + 写入用时/评分/总结/归档时间（T21）；
 - 每次数据变更提交成功后发射 `changed` 信号。
 """
 
@@ -36,6 +36,8 @@ from shiguang.services.exceptions import (
 )
 from shiguang.services.interfaces import TaskServiceInterface
 
+# 归档总结长度上限（产品文档 v0.3：非空时去空白且不超过 500 字）
+MAX_SUMMARY_LENGTH = 500
 _REPEAT_UNSUPPORTED = "重复代办将在后续版本支持，当前请创建「不重复」代办"
 
 
@@ -143,8 +145,28 @@ class TaskService(TaskServiceInterface):
         self.changed.emit()
 
     def archive(self, task_id: int, data: ArchiveInput) -> TodoItem:
-        # T18 有意不做：T21 接入真实归档（单行更新）。
-        raise NotImplementedError("归档功能将在后续版本提供（T21 接入）")
+        with session_scope(self._factory) as s:
+            item = self._repo.get(s, task_id)
+            if item is None:
+                raise TaskNotFoundError(f"代办不存在: {task_id}")
+            if item.status == STATUS_ARCHIVED:
+                raise TaskArchivedError("代办已归档")
+            if not 1 <= data.score <= 5:
+                raise ValidationError("评分必须为 1-5")
+            if data.duration <= 0:
+                raise ValidationError("用时必须大于 0 分钟")
+            summary = data.summary.strip()
+            if len(summary) > MAX_SUMMARY_LENGTH:
+                raise ValidationError(f"总结不能超过 {MAX_SUMMARY_LENGTH} 字")
+            # 归档 = 单行更新：翻转状态并写回归档字段（不新增记录）
+            item.status = STATUS_ARCHIVED
+            item.score = data.score
+            item.duration = data.duration
+            item.summary = summary or None
+            item.archived_at = datetime.now()
+            archived = self._repo.save(s, item)
+        self.changed.emit()
+        return archived
 
     # ---------- 内部 ----------
 

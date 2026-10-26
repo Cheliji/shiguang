@@ -3,9 +3,8 @@
 针对接口行为编写，同一套用例同时参数化运行 Mock 与真实实现（T18：
 真实实现每用例独立内存库、独立服务实例）。
 
-过渡态说明（真实实现，T18）：
-- 重复代办（repeat != none）创建暂以校验错误拒绝，展开相关断言分支到 T19；
-- 归档暂抛 NotImplementedError，归档相关用例对真实实现 skip，T21 接入后恢复。
+过渡态说明（真实实现）：
+- 重复代办（repeat != none）创建暂以校验错误拒绝，展开相关断言分支到 T19。
 """
 
 from datetime import date, timedelta
@@ -33,12 +32,6 @@ def service(impl):
     engine = create_engine_for(":memory:")
     Base.metadata.create_all(engine)
     return TaskService(session_factory_for(engine))
-
-
-def _skip_archive(impl: str) -> None:
-    """归档对真实实现暂抛未实现（T18 过渡态，T21 接入后移除）。"""
-    if impl == "real":
-        pytest.skip("T18：真实实现归档暂抛未实现（T21 接入）")
 
 
 # ---------- 创建 ----------
@@ -203,8 +196,7 @@ def test_list_pending_same_priority_by_date(service):
     assert [i.name for i in service.list_pending()] == ["前", "后"]
 
 
-def test_today_summary(service, impl):
-    _skip_archive(impl)  # 归档对真实实现暂不可用（T21 接入）
+def test_today_summary(service):
     today = date.today()
     a = service.create_todo(name="a", standard="s", day=today)
     service.create_todo(name="b", standard="s", day=today)
@@ -233,8 +225,7 @@ def test_update_todo(service):
     assert service.list_pending()[0].description == "d"
 
 
-def test_update_archived_raises(service, impl):
-    _skip_archive(impl)  # 归档对真实实现暂不可用（T21 接入）
+def test_update_archived_raises(service):
     item = service.create_todo(name="a", standard="s")
     service.archive(item.id, ArchiveInput(duration=10, score=5))
     with pytest.raises(ValueError):
@@ -254,8 +245,7 @@ def test_delete_todo(service):
 # ---------- 归档 ----------
 
 
-def test_archive(service, impl):
-    _skip_archive(impl)  # 归档对真实实现暂不可用（T21 接入）
+def test_archive(service):
     item = service.create_todo(name="a", standard="s")
     service.archive(item.id, ArchiveInput(duration=25, score=5, summary=" 不错 "))
     archived = service.list_archived()
@@ -266,32 +256,28 @@ def test_archive(service, impl):
     assert archived[0].archived_at is not None
 
 
-def test_archive_summary_optional(service, impl):
+def test_archive_summary_optional(service):
     """总结可选（产品文档 v0.3）。"""
-    _skip_archive(impl)  # 归档对真实实现暂不可用（T21 接入）
     item = service.create_todo(name="a", standard="s")
     service.archive(item.id, ArchiveInput(duration=25, score=3))
     assert service.list_archived()[0].summary is None
 
 
 @pytest.mark.parametrize("score", [0, 6])
-def test_archive_invalid_score(service, impl, score):
-    _skip_archive(impl)  # 归档对真实实现暂不可用（T21 接入）
+def test_archive_invalid_score(service, score):
     item = service.create_todo(name="a", standard="s")
     with pytest.raises(ValueError):
         service.archive(item.id, ArchiveInput(duration=10, score=score))
     assert service.list_archived() == []  # 无残留
 
 
-def test_archive_invalid_duration(service, impl):
-    _skip_archive(impl)  # 归档对真实实现暂不可用（T21 接入）
+def test_archive_invalid_duration(service):
     item = service.create_todo(name="a", standard="s")
     with pytest.raises(ValueError):
         service.archive(item.id, ArchiveInput(duration=0, score=3))
 
 
-def test_archive_twice_raises(service, impl):
-    _skip_archive(impl)  # 归档对真实实现暂不可用（T21 接入）
+def test_archive_twice_raises(service):
     item = service.create_todo(name="a", standard="s")
     service.archive(item.id, ArchiveInput(duration=10, score=4))
     with pytest.raises(ValueError):

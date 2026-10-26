@@ -80,14 +80,98 @@ def test_delete_missing_raises():
         service.delete_todo(999)
 
 
-def test_archive_not_implemented():
-    """T18 有意不做：归档入口暂抛未实现（T21 接入）。"""
+# ---------- 归档（T21） ----------
+
+
+def test_archive_writes_back_single_row():
+    """归档 = 单行更新：状态翻转 + 归档字段完整（含归档时间），不新增记录。"""
     from shiguang.services.dto import ArchiveInput
 
     service, _ = _make_service()
     item = service.create_todo(name="a", standard="s")
-    with pytest.raises(NotImplementedError):
+    archived = service.archive(item.id, ArchiveInput(duration=25, score=5, summary=" 不错 "))
+
+    assert archived.status == "archived"
+    assert (archived.score, archived.duration) == (5, 25)
+    assert archived.summary == "不错"  # 去空白
+    assert archived.archived_at is not None
+    assert archived.date == item.date  # 计划日期不变
+
+    assert service.list_pending() == []
+    assert [i.id for i in service.list_archived()] == [item.id]
+
+
+def test_archive_summary_length_limit():
+    """总结非空时去空白且不超过 500 字。"""
+    from shiguang.services.dto import ArchiveInput
+
+    service, _ = _make_service()
+    item = service.create_todo(name="a", standard="s")
+    with pytest.raises(ValidationError, match="500"):
+        service.archive(item.id, ArchiveInput(duration=10, score=5, summary="字" * 501))
+    assert service.list_pending()[0].id == item.id  # 数据未变
+
+
+def test_archive_invalid_input_leaves_no_trace(tmp_path):
+    """评分/用时非法时拒绝且库无变化（跨连接验证）。"""
+    from shiguang.services.dto import ArchiveInput
+
+    db = tmp_path / "t.db"
+    upgrade_head(db)
+
+    engine1 = create_engine_for(db)
+    service1 = TaskService(session_factory_for(engine1))
+    item = service1.create_todo(name="a", standard="s")
+    with pytest.raises(ValidationError):
+        service1.archive(item.id, ArchiveInput(duration=10, score=6))
+    with pytest.raises(ValidationError):
+        service1.archive(item.id, ArchiveInput(duration=0, score=3))
+    engine1.dispose()
+
+    engine2 = create_engine_for(db)
+    service2 = TaskService(session_factory_for(engine2))
+    assert len(service2.list_pending()) == 1  # 仍是待办，无归档残留
+    assert service2.list_archived() == []
+    engine2.dispose()
+
+
+def test_archive_missing_raises():
+    from shiguang.services.dto import ArchiveInput
+
+    service, _ = _make_service()
+    with pytest.raises(TaskNotFoundError):
+        service.archive(999, ArchiveInput(duration=10, score=5))
+
+
+def test_archive_twice_rejected():
+    from shiguang.services.dto import ArchiveInput
+
+    service, _ = _make_service()
+    item = service.create_todo(name="a", standard="s")
+    service.archive(item.id, ArchiveInput(duration=10, score=5))
+    with pytest.raises(TaskArchivedError):
         service.archive(item.id, ArchiveInput(duration=10, score=5))
+
+
+def test_archive_persists_across_restart(tmp_path):
+    """归档写入文件库，重启后已归档视图可见。"""
+    from shiguang.services.dto import ArchiveInput
+
+    db = tmp_path / "t.db"
+    upgrade_head(db)
+
+    engine1 = create_engine_for(db)
+    service1 = TaskService(session_factory_for(engine1))
+    item = service1.create_todo(name="重启后已归档", standard="s", day=date.today())
+    service1.archive(item.id, ArchiveInput(duration=15, score=4, summary="完成"))
+    engine1.dispose()
+
+    engine2 = create_engine_for(db)
+    service2 = TaskService(session_factory_for(engine2))
+    archived = service2.list_archived(date.today())
+    assert [i.name for i in archived] == ["重启后已归档"]
+    assert archived[0].score == 4 and archived[0].duration == 15
+    engine2.dispose()
 
 
 # ---------- 行为细节 ----------
