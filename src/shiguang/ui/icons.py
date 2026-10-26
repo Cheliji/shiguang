@@ -10,7 +10,9 @@ from PySide6.QtCore import QRectF, Qt
 from PySide6.QtGui import QColor, QIcon, QPainter, QPixmap
 from PySide6.QtSvg import QSvgRenderer
 
-ICON_DIR = Path(__file__).parent.parent / "resources" / "icons"
+from shiguang.config import package_root
+
+ICON_DIR = package_root() / "resources" / "icons"
 
 
 def icon_path(name: str) -> Path:

@@ -7,11 +7,11 @@ from pathlib import Path
 from alembic import command
 from alembic.config import Config
 
-from shiguang.config import get_db_path
+from shiguang.config import bundle_root, get_db_path, package_root
 from shiguang.db.session import sqlite_url_for
 
-_ALEMBIC_INI = Path(__file__).resolve().parents[3] / "alembic.ini"
-_MIGRATIONS_DIR = Path(__file__).resolve().parent / "migrations"
+_ALEMBIC_INI = bundle_root() / "alembic.ini"
+_MIGRATIONS_DIR = package_root() / "db" / "migrations"
 
 
 def upgrade_head(db_path: Path | str | None = None) -> None:

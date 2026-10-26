@@ -5,16 +5,16 @@ T22：完整启动序列（数据目录定位 → 迁移 → 逾期顺延扫描 
 """
 
 import sys
-from pathlib import Path
 
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QFont
 from PySide6.QtWidgets import QApplication
 from qfluentwidgets import Theme, setTheme
 
+from shiguang.config import package_root
 from shiguang.ui.main_window import MainWindow
 
-_QSS_PATH = Path(__file__).parent / "resources" / "styles.qss"
+_QSS_PATH = package_root() / "resources" / "styles.qss"
 
 
 def main() -> int:
