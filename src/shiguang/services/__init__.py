@@ -1,4 +1,8 @@
-"""服务工厂：按 USE_MOCK 开关返回 Mock 或真实实现（T18 接入真实实现）。"""
+"""服务工厂：按 USE_MOCK 开关返回 Mock 或真实实现（T22 起默认真实实现）。
+
+正常启动由 `app.bootstrap_services` 装配并经 `set_task_service` 注册；
+本模块的懒加载分支（get_task_service）是未走启动序列时的兜底。
+"""
 
 from shiguang import config
 from shiguang.services.interfaces import TaskServiceInterface
@@ -19,18 +23,19 @@ def get_task_service() -> TaskServiceInterface:
     return _task_service
 
 
+def set_task_service(service: TaskServiceInterface) -> None:
+    """注册外部装配好的服务实例（app 启动序列用）。"""
+    global _task_service
+    _task_service = service
+
+
 def _build_real_service() -> TaskServiceInterface:
-    """真实实现：迁移到最新版（幂等）→ 建引擎 → 服务。
+    """懒加载兜底：迁移到最新版（幂等）→ 真实服务。"""
+    from shiguang.app import bootstrap_services
 
-    完整启动序列（数据目录定位、跨天定时器等）由 T22 整合。
-    """
-    from shiguang.db.migration_runner import upgrade_head
-    from shiguang.db.session import create_engine_for, session_factory_for
-    from shiguang.services.task_service import TaskService
-
-    upgrade_head()
-    engine = create_engine_for(config.get_db_path())
-    return TaskService(session_factory_for(engine))
+    services = bootstrap_services()
+    assert services is not None  # USE_MOCK 分支不会走到这里
+    return services[0]
 
 
 def reset_task_service() -> None:

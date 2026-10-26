@@ -1,12 +1,13 @@
 """拾光应用入口。
 
 T04：启动无边框主窗口（自绘标题栏 + 图标导航 + 占位页）。
-T22 将加入完整启动序列（数据库迁移、实例生成、延期扫描）。
+T22：完整启动序列（数据目录定位 → 迁移 → 逾期顺延扫描 → 主窗口 → 跨天监视）。
 """
 
 import sys
 from pathlib import Path
 
+from PySide6.QtCore import Qt
 from PySide6.QtGui import QFont
 from PySide6.QtWidgets import QApplication
 from qfluentwidgets import Theme, setTheme
@@ -36,7 +37,27 @@ def main() -> int:
     if maybe_show_preview():
         return app.exec()
 
+    # T22 启动序列：迁移 → 逾期 auto 代办顺延扫描（真实服务；Mock 模式跳过）。
+    # 本地 SQLite 迁移/扫描通常在毫秒级，等待光标作为启动耗时反馈。
+    from shiguang.app import DayRolloverWatcher, bootstrap_services
+    from shiguang.services import get_task_service, set_task_service
+
+    QApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
+    QApplication.processEvents()
+    try:
+        services = bootstrap_services()
+        if services is not None:
+            task_service, delay_service = services
+            set_task_service(task_service)
+            delay_service.scan()  # 启动时顺延一次逾期 auto 代办
+        else:  # USE_MOCK=True：演示/测试模式，无数据库
+            task_service, delay_service = get_task_service(), None
+    finally:
+        QApplication.restoreOverrideCursor()
+
     window = MainWindow()
+    watcher = DayRolloverWatcher(task_service, delay_service, window)
+    watcher.install_on_window(window)
     window.show()
 
     return app.exec()
