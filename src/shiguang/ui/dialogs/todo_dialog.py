@@ -19,8 +19,6 @@ from PySide6.QtWidgets import (
     QButtonGroup,
     QHBoxLayout,
     QLabel,
-    QPushButton,
-    QRadioButton,
     QStackedWidget,
     QToolButton,
     QVBoxLayout,
@@ -43,6 +41,7 @@ from shiguang.services.dto import (
 from shiguang.ui.icons import colored_icon
 from shiguang.ui.theme import Color, FontSize, Space
 from shiguang.ui.widgets.date_picker import DatePickerButton
+from shiguang.ui.widgets.dot_buttons import DotRadioButton, PriorityDotButton
 from shiguang.ui.widgets.form_fields import AutoGrowTextEdit, ChevronComboBox, DialogScrollArea
 
 _FIELD_QSS = f"""
@@ -66,18 +65,6 @@ LineEdit, TextEdit {{
     border-radius: 8px;
     padding: 8px 12px;
     font-size: {FontSize.BODY}px;
-}}
-"""
-
-_RADIO_QSS = f"""
-QRadioButton {{
-    font-size: {FontSize.BODY}px;
-    color: {Color.TEXT_PRIMARY};
-    spacing: 6px;
-}}
-QRadioButton::indicator {{
-    width: 16px;
-    height: 16px;
 }}
 """
 
@@ -380,12 +367,11 @@ class TodoDialog(MessageBoxBase):
         row.setSpacing(Space.LG)
         self.delay_group = QButtonGroup(self.widget)
         self.delay_group.setExclusive(True)
-        self.delay_buttons: dict[str, QRadioButton] = {}
+        self.delay_buttons: dict[str, DotRadioButton] = {}
         for i, (value, label) in enumerate(
             (("default", "默认（不延期）"), ("never", "不延期"), ("auto", "自动延期"))
         ):
-            radio = QRadioButton(label, self.widget)
-            radio.setStyleSheet(_RADIO_QSS)
+            radio = DotRadioButton(label, self.widget)
             radio.setProperty("delay_value", value)
             self.delay_group.addButton(radio, i)
             row.addWidget(radio)
@@ -415,10 +401,10 @@ class TodoDialog(MessageBoxBase):
         row = QHBoxLayout()
         row.setSpacing(Space.MD)
 
-        self.priority_buttons: dict[str, QPushButton] = {}
+        self.priority_buttons: dict[str, PriorityDotButton] = {}
         self.priority_group = QButtonGroup(self.widget)
         self.priority_group.setExclusive(True)
-        colors = {
+        self._priority_colors = {
             PRIORITY_CHOICES[0]: Color.PRIORITY_RED,
             PRIORITY_CHOICES[1]: Color.PRIORITY_ORANGE,
             PRIORITY_CHOICES[2]: Color.PRIORITY_BLUE,
@@ -426,18 +412,9 @@ class TodoDialog(MessageBoxBase):
             PRIORITY_CHOICES[4]: Color.PRIORITY_GRAY,
         }
         for value in PRIORITY_CHOICES:
-            button = QPushButton(self.widget)
-            button.setCheckable(True)
-            button.setFixedSize(20, 20)
-            button.setCursor(Qt.CursorShape.PointingHandCursor)
+            # 矢量自绘圆点：选中放大 + 主题色浅光环（详见 dot_buttons.py）
+            button = PriorityDotButton(self._priority_colors[value], self.widget)
             button.setToolTip(PRIORITY_LABELS[value])
-            color = colors[value]
-            button.setStyleSheet(
-                f"QPushButton {{ background: {color}; border: 1px solid transparent;"
-                " border-radius: 10px; }"
-                f"QPushButton:checked {{ border: 2px solid {Color.TEXT_PRIMARY}; }}"
-                f"QPushButton:hover {{ border: 2px solid {Color.TEXT_SECONDARY}; }}"
-            )
             self.priority_group.addButton(button)
             self.priority_buttons[value] = button
             row.addWidget(button)
@@ -456,8 +433,14 @@ class TodoDialog(MessageBoxBase):
         return area
 
     def _on_priority_toggled(self, checked: bool) -> None:
+        """右侧文字跟随选中色档高亮（圆点大小变化由 PriorityDotButton 自绘完成）。"""
         if checked:
-            self.priority_text.setText(PRIORITY_LABELS[self._selected_priority()])
+            selected = self._selected_priority()
+            self.priority_text.setText(PRIORITY_LABELS[selected])
+            self.priority_text.setStyleSheet(
+                f"color: {self._priority_colors[selected]};"
+                f" font-size: {FontSize.AUXILIARY}px; font-weight: 600;"
+            )
 
     def _selected_priority(self) -> str:
         for value, button in self.priority_buttons.items():
