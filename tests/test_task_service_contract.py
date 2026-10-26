@@ -1,20 +1,44 @@
 """TaskService 接口契约测试（T05）。
 
-针对接口行为编写，Mock 与真实实现（T18/T21）共用本测试。
+针对接口行为编写，同一套用例同时参数化运行 Mock 与真实实现（T18：
+真实实现每用例独立内存库、独立服务实例）。
+
+过渡态说明（真实实现，T18）：
+- 重复代办（repeat != none）创建暂以校验错误拒绝，展开相关断言分支到 T19；
+- 归档暂抛 NotImplementedError，归档相关用例对真实实现 skip，T21 接入后恢复。
 """
 
 from datetime import date, timedelta
 
 import pytest
 
+from shiguang.db.session import create_engine_for, session_factory_for
+from shiguang.models import Base
 from shiguang.services.dto import PRIORITY_RED, REPEAT_DAILY, ArchiveInput
 from shiguang.services.mock.mock_task_service import MockTaskService
+from shiguang.services.task_service import TaskService
+
+
+@pytest.fixture(params=["mock", "real"])
+def impl(request):
+    """实现种类：契约测试同时跑 Mock 与真实实现。"""
+    return request.param
 
 
 @pytest.fixture()
-def service():
-    """无预置数据的干净服务。"""
-    return MockTaskService(with_seed=False)
+def service(impl):
+    """无预置数据的干净服务（真实实现为独立内存库、独立服务实例）。"""
+    if impl == "mock":
+        return MockTaskService(with_seed=False)
+    engine = create_engine_for(":memory:")
+    Base.metadata.create_all(engine)
+    return TaskService(session_factory_for(engine))
+
+
+def _skip_archive(impl: str) -> None:
+    """归档对真实实现暂抛未实现（T18 过渡态，T21 接入后移除）。"""
+    if impl == "real":
+        pytest.skip("T18：真实实现归档暂抛未实现（T21 接入）")
 
 
 # ---------- 创建 ----------
@@ -48,9 +72,22 @@ def test_create_requires_name_and_standard(service):
         service.create_todo(name="名称", standard=" ")
 
 
-def test_create_repeat_expands_series(service):
-    """创建时展开：每日代办一次生成区间内全部独立记录，共享系列标识。"""
+def test_create_repeat_expands_series(service, impl):
+    """创建时展开：每日代办一次生成区间内全部独立记录，共享系列标识。
+
+    真实实现（T18 过渡态）暂拒绝重复代办，T19 接入展开生成后走同一断言。
+    """
     today = date.today()
+    if impl == "real":
+        with pytest.raises(ValueError):
+            service.create_todo(
+                name="背单词",
+                standard="20 个",
+                repeat=REPEAT_DAILY,
+                day=today,
+                end_date=today + timedelta(days=7),
+            )
+        return
     first = service.create_todo(
         name="背单词",
         standard="20 个",
@@ -67,12 +104,14 @@ def test_create_repeat_expands_series(service):
 
 
 def test_create_repeat_requires_end_date(service):
+    # Mock：缺结束日期拒绝；真实实现（T18 过渡态）：重复代办整体拒绝——均为 ValueError
     with pytest.raises(ValueError):
         service.create_todo(name="背单词", standard="20 个", repeat=REPEAT_DAILY, day=date.today())
 
 
 def test_create_repeat_invalid_range_raises(service):
     today = date.today()
+    # Mock：日期倒挂 / 超 400 条上限拒绝；真实实现（T18 过渡态）：重复代办整体拒绝
     with pytest.raises(ValueError):
         service.create_todo(
             name="a",
@@ -92,9 +131,20 @@ def test_create_repeat_invalid_range_raises(service):
     assert service.list_pending() == []  # 校验失败无残留
 
 
-def test_series_records_are_independent(service):
+def test_series_records_are_independent(service, impl):
     """系列内记录互不影响：归档/删除一条不影响其余记录。"""
     today = date.today()
+    if impl == "real":
+        # T18 过渡态：真实实现暂拒绝重复代办（T19 接入展开生成）
+        with pytest.raises(ValueError):
+            service.create_todo(
+                name="背单词",
+                standard="20 个",
+                repeat=REPEAT_DAILY,
+                day=today,
+                end_date=today + timedelta(days=2),
+            )
+        return
     first = service.create_todo(
         name="背单词",
         standard="20 个",
@@ -153,7 +203,8 @@ def test_list_pending_same_priority_by_date(service):
     assert [i.name for i in service.list_pending()] == ["前", "后"]
 
 
-def test_today_summary(service):
+def test_today_summary(service, impl):
+    _skip_archive(impl)  # 归档对真实实现暂不可用（T21 接入）
     today = date.today()
     a = service.create_todo(name="a", standard="s", day=today)
     service.create_todo(name="b", standard="s", day=today)
@@ -182,7 +233,8 @@ def test_update_todo(service):
     assert service.list_pending()[0].description == "d"
 
 
-def test_update_archived_raises(service):
+def test_update_archived_raises(service, impl):
+    _skip_archive(impl)  # 归档对真实实现暂不可用（T21 接入）
     item = service.create_todo(name="a", standard="s")
     service.archive(item.id, ArchiveInput(duration=10, score=5))
     with pytest.raises(ValueError):
@@ -202,7 +254,8 @@ def test_delete_todo(service):
 # ---------- 归档 ----------
 
 
-def test_archive(service):
+def test_archive(service, impl):
+    _skip_archive(impl)  # 归档对真实实现暂不可用（T21 接入）
     item = service.create_todo(name="a", standard="s")
     service.archive(item.id, ArchiveInput(duration=25, score=5, summary=" 不错 "))
     archived = service.list_archived()
@@ -213,28 +266,32 @@ def test_archive(service):
     assert archived[0].archived_at is not None
 
 
-def test_archive_summary_optional(service):
+def test_archive_summary_optional(service, impl):
     """总结可选（产品文档 v0.3）。"""
+    _skip_archive(impl)  # 归档对真实实现暂不可用（T21 接入）
     item = service.create_todo(name="a", standard="s")
     service.archive(item.id, ArchiveInput(duration=25, score=3))
     assert service.list_archived()[0].summary is None
 
 
 @pytest.mark.parametrize("score", [0, 6])
-def test_archive_invalid_score(service, score):
+def test_archive_invalid_score(service, impl, score):
+    _skip_archive(impl)  # 归档对真实实现暂不可用（T21 接入）
     item = service.create_todo(name="a", standard="s")
     with pytest.raises(ValueError):
         service.archive(item.id, ArchiveInput(duration=10, score=score))
     assert service.list_archived() == []  # 无残留
 
 
-def test_archive_invalid_duration(service):
+def test_archive_invalid_duration(service, impl):
+    _skip_archive(impl)  # 归档对真实实现暂不可用（T21 接入）
     item = service.create_todo(name="a", standard="s")
     with pytest.raises(ValueError):
         service.archive(item.id, ArchiveInput(duration=0, score=3))
 
 
-def test_archive_twice_raises(service):
+def test_archive_twice_raises(service, impl):
+    _skip_archive(impl)  # 归档对真实实现暂不可用（T21 接入）
     item = service.create_todo(name="a", standard="s")
     service.archive(item.id, ArchiveInput(duration=10, score=4))
     with pytest.raises(ValueError):

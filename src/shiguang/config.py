@@ -13,7 +13,8 @@ from pathlib import Path
 
 from platformdirs import user_data_dir
 
-# UI 实现阶段使用内存 Mock 数据；阶段三（T18 起）切换为 False
+# UI 实现阶段使用内存 Mock 数据；阶段四（T18 起）可切换为 False，
+# 默认保持 True，应用演示能力不受影响（USE_MOCK 一键切回）
 USE_MOCK = True
 
 APP_NAME = "拾光"
