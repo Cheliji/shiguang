@@ -1,7 +1,6 @@
 """基于 SQLite 的真实代办服务（T18 起）。
 
 与 Mock 的差异 / 本阶段有意不做的部分（按任务文档，后续任务补齐）：
-- 重复代办（repeat != "none"）暂以校验错误拒绝 —— T19 接入创建时展开生成；
 - 自动延期扫描 —— T20 接入。
 
 行为约定（与 Mock 对齐，契约测试共用同一套断言）：
@@ -10,16 +9,20 @@
 - 列表排序：按重要程度降序（红>橙>蓝>绿>灰），同档按日期/id 升序；
 - 已归档记录不可编辑/删除；不存在的 id 抛 TaskNotFoundError；
 - 归档 = 单行更新：状态翻转 + 写入用时/评分/总结/归档时间（T21）；
+- 重复代办创建时按 `domain.rules.expand_dates` 一次性展开为多条独立记录，
+  同一事务批量插入，共享 series_id；日期倒挂/超 400 条上限抛 ValueError（T19）；
 - 每次数据变更提交成功后发射 `changed` 信号。
 """
 
 from __future__ import annotations
 
+import uuid
 from datetime import date, datetime
 
 from sqlalchemy.orm import Session, sessionmaker
 
 from shiguang.db.session import session_scope
+from shiguang.domain.rules import expand_dates
 from shiguang.repositories.task_repository import TaskRepository
 from shiguang.services.dto import (
     REPEAT_NONE,
@@ -38,7 +41,6 @@ from shiguang.services.interfaces import TaskServiceInterface
 
 # 归档总结长度上限（产品文档 v0.3：非空时去空白且不超过 500 字）
 MAX_SUMMARY_LENGTH = 500
-_REPEAT_UNSUPPORTED = "重复代办将在后续版本支持，当前请创建「不重复」代办"
 
 
 class TaskService(TaskServiceInterface):
@@ -99,24 +101,31 @@ class TaskService(TaskServiceInterface):
             raise ValidationError("代办名称不能为空")
         if not standard_s:
             raise ValidationError("完成标准不能为空")
-        if repeat != REPEAT_NONE:
-            # T18 过渡限制：T19 接入创建时展开生成后解除
-            raise ValidationError(_REPEAT_UNSUPPORTED)
+        base = {
+            "name": name_s,
+            "standard": standard_s,
+            "description": description.strip(),
+            "repeat": repeat,
+            "priority": priority,
+            "delay_policy": delay_policy,
+        }
+        if repeat == REPEAT_NONE:
+            item = TodoItem(id=0, date=day or date.today(), **base)
+            with session_scope(self._factory) as s:
+                created = self._repo.add(s, item)
+            self.changed.emit()
+            return created
 
-        item = TodoItem(
-            id=0,
-            name=name_s,
-            standard=standard_s,
-            description=description.strip(),
-            date=day or date.today(),
-            repeat=repeat,
-            priority=priority,
-            delay_policy=delay_policy,
-        )
+        # 重复代办：创建时一次性展开为多条独立记录（同交易批量插入，共享系列标识）
+        if day is None or end_date is None:
+            raise ValidationError("重复代办必须选择开始日期与结束日期")
+        plan_dates = expand_dates(repeat, day, end_date)  # 倒挂/超上限/未知规则抛 ValueError
+        series_id = uuid.uuid4().hex
+        items = [TodoItem(id=0, date=d, series_id=series_id, **base) for d in plan_dates]
         with session_scope(self._factory) as s:
-            created = self._repo.add(s, item)
+            created = [self._repo.add(s, item) for item in items]
         self.changed.emit()
-        return created
+        return created[0]  # 首条恒为开始日期
 
     def update_todo(self, task_id: int, **fields) -> TodoItem:
         with session_scope(self._factory) as s:

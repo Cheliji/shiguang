@@ -13,7 +13,7 @@ import pytest
 from shiguang.db.migration_runner import upgrade_head
 from shiguang.db.session import create_engine_for, session_factory_for
 from shiguang.models import Base
-from shiguang.services.dto import REPEAT_DAILY
+from shiguang.services.dto import REPEAT_DAILY, REPEAT_MONTHLY, REPEAT_WEEKLY
 from shiguang.services.exceptions import (
     TaskArchivedError,
     TaskNotFoundError,
@@ -54,18 +54,88 @@ def test_blank_standard_rejected():
     assert service.list_pending() == []
 
 
-def test_repeat_unsupported_rejected():
-    """T18 过渡限制：重复代办以校验错误拒绝（T19 解除）。"""
+# ---------- 重复代办创建时展开（T19） ----------
+
+
+def test_repeat_daily_expands_to_independent_records():
+    """每日：开始今天、结束 3 天后 → 连续 4 天各一条，共享系列标识。"""
     service, _ = _make_service()
-    with pytest.raises(ValidationError, match="后续版本"):
+    today = date.today()
+    first = service.create_todo(
+        name="背单词",
+        standard="20 个",
+        repeat=REPEAT_DAILY,
+        day=today,
+        end_date=today + timedelta(days=3),
+    )
+    series = service.list_pending()
+    assert len(series) == 4
+    assert [i.date for i in series] == [today + timedelta(days=i) for i in range(4)]
+    assert len({i.series_id for i in series}) == 1
+    assert first.series_id == series[0].series_id
+    assert all(i.repeat == REPEAT_DAILY for i in series)
+
+
+def test_repeat_weekly_expands():
+    """每周：从 start 起每 7 天一条，不超过 end（10-22 ~ 11-01 → 2 条）。"""
+    service, _ = _make_service()
+    start, end = date(2026, 10, 22), date(2026, 11, 1)
+    service.create_todo(name="周报", standard="发出", repeat=REPEAT_WEEKLY, day=start, end_date=end)
+    series = service.list_pending()
+    assert [i.date for i in series] == [date(2026, 10, 22), date(2026, 10, 29)]
+
+
+def test_repeat_monthly_skips_month_without_day_number():
+    """每月：1 月 31 日起，2 月无 31 日跳过 → 仅 1-31、3-31 两条。"""
+    service, _ = _make_service()
+    service.create_todo(
+        name="月结",
+        standard="完成",
+        repeat=REPEAT_MONTHLY,
+        day=date(2026, 1, 31),
+        end_date=date(2026, 3, 31),
+    )
+    assert [i.date for i in service.list_pending()] == [date(2026, 1, 31), date(2026, 3, 31)]
+
+
+def test_repeat_invalid_range_leaves_no_trace():
+    """结束早于开始：拒绝创建且无残留。"""
+    service, _ = _make_service()
+    today = date.today()
+    with pytest.raises(ValueError):
         service.create_todo(
-            name="背单词",
-            standard="20 个",
+            name="a",
+            standard="s",
             repeat=REPEAT_DAILY,
-            day=date.today(),
-            end_date=date.today() + timedelta(days=3),
+            day=today,
+            end_date=today - timedelta(days=1),
         )
     assert service.list_pending() == []
+
+
+def test_repeat_expansion_atomic(tmp_path):
+    """展开批量插入在同一事务：校验失败则全部不落库（跨连接验证无残留）。"""
+    db = tmp_path / "t.db"
+    upgrade_head(db)
+
+    engine1 = create_engine_for(db)
+    service1 = TaskService(session_factory_for(engine1))
+    today = date.today()
+    with pytest.raises(ValueError):
+        # 结束日期早于开始日期：expand_dates 在批量插入前抛错
+        service1.create_todo(
+            name="a",
+            standard="s",
+            repeat=REPEAT_DAILY,
+            day=today,
+            end_date=today - timedelta(days=1),
+        )
+    engine1.dispose()
+
+    engine2 = create_engine_for(db)
+    service2 = TaskService(session_factory_for(engine2))
+    assert service2.list_pending() == []
+    engine2.dispose()
 
 
 def test_update_missing_raises():

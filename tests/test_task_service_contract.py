@@ -2,9 +2,6 @@
 
 针对接口行为编写，同一套用例同时参数化运行 Mock 与真实实现（T18：
 真实实现每用例独立内存库、独立服务实例）。
-
-过渡态说明（真实实现）：
-- 重复代办（repeat != none）创建暂以校验错误拒绝，展开相关断言分支到 T19。
 """
 
 from datetime import date, timedelta
@@ -65,22 +62,9 @@ def test_create_requires_name_and_standard(service):
         service.create_todo(name="名称", standard=" ")
 
 
-def test_create_repeat_expands_series(service, impl):
-    """创建时展开：每日代办一次生成区间内全部独立记录，共享系列标识。
-
-    真实实现（T18 过渡态）暂拒绝重复代办，T19 接入展开生成后走同一断言。
-    """
+def test_create_repeat_expands_series(service):
+    """创建时展开：每日代办一次生成区间内全部独立记录，共享系列标识。"""
     today = date.today()
-    if impl == "real":
-        with pytest.raises(ValueError):
-            service.create_todo(
-                name="背单词",
-                standard="20 个",
-                repeat=REPEAT_DAILY,
-                day=today,
-                end_date=today + timedelta(days=7),
-            )
-        return
     first = service.create_todo(
         name="背单词",
         standard="20 个",
@@ -97,14 +81,12 @@ def test_create_repeat_expands_series(service, impl):
 
 
 def test_create_repeat_requires_end_date(service):
-    # Mock：缺结束日期拒绝；真实实现（T18 过渡态）：重复代办整体拒绝——均为 ValueError
     with pytest.raises(ValueError):
         service.create_todo(name="背单词", standard="20 个", repeat=REPEAT_DAILY, day=date.today())
 
 
 def test_create_repeat_invalid_range_raises(service):
     today = date.today()
-    # Mock：日期倒挂 / 超 400 条上限拒绝；真实实现（T18 过渡态）：重复代办整体拒绝
     with pytest.raises(ValueError):
         service.create_todo(
             name="a",
@@ -124,20 +106,9 @@ def test_create_repeat_invalid_range_raises(service):
     assert service.list_pending() == []  # 校验失败无残留
 
 
-def test_series_records_are_independent(service, impl):
+def test_series_records_are_independent(service):
     """系列内记录互不影响：归档/删除一条不影响其余记录。"""
     today = date.today()
-    if impl == "real":
-        # T18 过渡态：真实实现暂拒绝重复代办（T19 接入展开生成）
-        with pytest.raises(ValueError):
-            service.create_todo(
-                name="背单词",
-                standard="20 个",
-                repeat=REPEAT_DAILY,
-                day=today,
-                end_date=today + timedelta(days=2),
-            )
-        return
     first = service.create_todo(
         name="背单词",
         standard="20 个",
