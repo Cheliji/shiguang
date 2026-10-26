@@ -2,6 +2,7 @@
 
 T24 引入 `expand_dates`：创建弹窗的条数预览与 Mock 数据层共用；
 T19 真实服务创建重复代办时复用同一函数，保证三处规则完全一致。
+T20 引入 `needs_auto_delay`：逾期自动延期扫描的判断规则。
 """
 
 from __future__ import annotations
@@ -54,3 +55,12 @@ def expand_dates(repeat: str, start: date, end: date) -> list[date]:
     if len(dates) > MAX_EXPAND_COUNT:
         raise ValueError(f"生成条数超过上限 {MAX_EXPAND_COUNT} 条，请缩短日期范围")
     return dates
+
+
+def needs_auto_delay(plan_date: date | None, delay_policy: str, today: date) -> bool:
+    """逾期且延期策略为"自动延期" → 需要顺延到 today（T20 扫描判断规则）。
+
+    逾期 = 计划日期早于 today（调用方只传入待办记录，已归档永不参与）；
+    default / never 策略返回 False：保持原日期不动，UI 以逾期样式展示。
+    """
+    return plan_date is not None and plan_date < today and delay_policy == "auto"
